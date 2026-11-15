@@ -229,3 +229,35 @@ export function nextSteps(pythons, platforms) {
   if (out.length > 1) add("Everything", everyFt, all);
   return out;
 }
+
+// The build lab's verdict for one result (a copy of labVerdict in ../logic.js; tests/site/check-logic.test.mjs checks
+// they agree): {kind, text}, where a wheel with no extension module is never called a working compiled build.
+export function labVerdict(r) {
+  const mins = (s) => (s < 90 ? `${s} s` : `${Math.round(s / 60)} min`);
+  if (r.outcome === "timeout") return { kind: "slow", text: `didn't finish building in ${mins(r.seconds)}` };
+  if (r.outcome === "failed" && r.reason === "unsupported platform") return { kind: "unsupported", text: "the package doesn't support this platform (its own build says so)" };
+  if (r.outcome === "failed") return { kind: "fails", text: r.reason === "other" ? "fails to build" : `fails to build: ${r.reason}` };
+  if (r.import === "deps-failed") return { kind: "broken", text: `builds in ${mins(r.seconds)}, but its dependencies don't install` };
+  if (r.import !== "ok") return { kind: "broken", text: `builds in ${mins(r.seconds)}, but doesn't import` };
+  if (!r.extensions) {
+    // The lab can't tell a pure-Python package (docopt) from an optional extension that was skipped.
+    if (/-none-any$/.test(r.wheel || "")) {
+      return { kind: "pure", text: `builds in ${mins(r.seconds)} as pure Python, with no compiled extension module (if it has an optional one, that was skipped)` };
+    }
+    return { kind: "partial", text: `builds in ${mins(r.seconds)}, but with no compiled extension module` };
+  }
+  if (r.gil === "re-enabled") return { kind: "gil", text: `builds in ${mins(r.seconds)}, but importing it turns the GIL back on` };
+  return { kind: "works", text: `builds from source in ${mins(r.seconds)} and imports${r.gil === "kept-off" ? ", GIL stays off" : ""}` };
+}
+
+// The PEP 503 name the tracker files packages under.
+export function canonicalName(name) {
+  return String(name).toLowerCase().replace(/[-_.]+/g, "-");
+}
+
+// The lab result for exactly this release on this target (label like "3.14t win-arm64"), or null: a result for
+// another version says nothing about the pinned one.
+export function labFor(builds, version, label) {
+  if (!Array.isArray(builds)) return null;
+  return builds.find((b) => b && b.target === label && b.version === version) ?? null;
+}

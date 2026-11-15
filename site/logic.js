@@ -96,8 +96,33 @@ function pyodideFooter(releases, anyBundled = false) {
   );
 }
 
+// What a build lab result (data/builds.json, see scripts/build_lab.py) means for someone without a wheel:
+// {kind, text}. kind: "works" (built, imported, and on free-threaded Python the GIL stayed off), "gil" (works only
+// with the GIL back on), "pure" (a pure-Python wheel: no compiled part, or an optional one skipped), "partial" (a
+// platform wheel with no compiled extension module), "broken" (built, but its dependencies or the import fail),
+// "fails" or "slow".
+// A wheel with no extension module is never called a working compiled build.
+function labVerdict(r) {
+  const mins = (s) => (s < 90 ? `${s} s` : `${Math.round(s / 60)} min`);
+  if (r.outcome === "timeout") return { kind: "slow", text: `didn't finish building in ${mins(r.seconds)}` };
+  if (r.outcome === "failed" && r.reason === "unsupported platform") return { kind: "unsupported", text: "the package doesn't support this platform (its own build says so)" };
+  if (r.outcome === "failed") return { kind: "fails", text: r.reason === "other" ? "fails to build" : `fails to build: ${r.reason}` };
+  if (r.import === "deps-failed") return { kind: "broken", text: `builds in ${mins(r.seconds)}, but its dependencies don't install` };
+  if (r.import !== "ok") return { kind: "broken", text: `builds in ${mins(r.seconds)}, but doesn't import` };
+  if (!r.extensions) {
+    // The lab can't tell a pure-Python package (docopt) from an optional extension that was skipped.
+    if (/-none-any$/.test(r.wheel || "")) {
+      return { kind: "pure", text: `builds in ${mins(r.seconds)} as pure Python, with no compiled extension module (if it has an optional one, that was skipped)` };
+    }
+    return { kind: "partial", text: `builds in ${mins(r.seconds)}, but with no compiled extension module` };
+  }
+  if (r.gil === "re-enabled") return { kind: "gil", text: `builds in ${mins(r.seconds)}, but importing it turns the GIL back on` };
+  return { kind: "works", text: `builds from source in ${mins(r.seconds)} and imports${r.gil === "kept-off" ? ", GIL stays off" : ""}` };
+}
+
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     BUNDLED_NOTE, installable, gapsAt, platformStats, pyodideReleases, bundledInfo, bundledDetail, whyCommand, pyodideFooter,
+    labVerdict,
   };
 }
