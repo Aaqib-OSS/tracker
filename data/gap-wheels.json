@@ -78,6 +78,25 @@
    "publish_run": "https://github.com/wheelgap/tracker/actions/runs/43876448691"
   },
   {
+   "name": "polars-runtime-32",
+   "version": "2.1.0",
+   "target": "3.14t win-arm64",
+   "wheel": "polars_runtime_32-2.1.0-cp314-cp314t-win_arm64.whl",
+   "sha256": "51dda5adb663a9feecc6de1742935d2d291a94deab6f1bc87f695196fcc5dd24",
+   "sdist": "polars_runtime_32-2.1.0.tar.gz",
+   "sdist_sha256": "c575f5f3cdb8a5f9be65477b9b4202b062593687fe62a0082add87fbd4571067",
+   "builds": [
+    "https://github.com/wheelgap/tracker/actions/runs/43894481984",
+    "https://github.com/wheelgap/tracker/actions/runs/43894495910"
+   ],
+   "licence": "MIT License",
+   "requires_python": ">=3.11",
+   "verified": "2026-11-16",
+   "batch": "https://github.com/wheelgap/tracker/actions/runs/43894336463",
+   "published": "2026-11-16",
+   "publish_run": "https://github.com/wheelgap/tracker/actions/runs/43894336463"
+  },
+  {
    "name": "pyiceberg",
    "version": "0.12.0",
    "target": "3.14 win-arm64",
@@ -133,6 +152,44 @@
    "batch": "https://github.com/wheelgap/tracker/actions/runs/43876448691",
    "published": "2026-11-16",
    "publish_run": "https://github.com/wheelgap/tracker/actions/runs/43876448691"
+  },
+  {
+   "name": "setproctitle",
+   "version": "1.3.8",
+   "target": "3.14 win-arm64",
+   "wheel": "setproctitle-1.3.8-cp314-cp314-win_arm64.whl",
+   "sha256": "fd1793551b7a03b903696312f502fd4bfbbf4094c14cdae6acd7b5cb8a915f5c",
+   "sdist": "setproctitle-1.3.8.tar.gz",
+   "sdist_sha256": "cafe209d064a6efb88cb45a03e97981ff8832802b2b5d009dde0197a3b7b41c8",
+   "builds": [
+    "https://github.com/wheelgap/tracker/actions/runs/43894508708",
+    "https://github.com/wheelgap/tracker/actions/runs/43894522411"
+   ],
+   "licence": "BSD-3-Clause",
+   "requires_python": ">=3.8",
+   "verified": "2026-11-16",
+   "batch": "https://github.com/wheelgap/tracker/actions/runs/43894336463",
+   "published": "2026-11-16",
+   "publish_run": "https://github.com/wheelgap/tracker/actions/runs/43894336463"
+  },
+  {
+   "name": "setproctitle",
+   "version": "1.3.8",
+   "target": "3.14t win-arm64",
+   "wheel": "setproctitle-1.3.8-cp314-cp314t-win_arm64.whl",
+   "sha256": "f8a2917669e2edbe88e753cea0f0a75498be6527c522dc483fe43b31432085ab",
+   "sdist": "setproctitle-1.3.8.tar.gz",
+   "sdist_sha256": "cafe209d064a6efb88cb45a03e97981ff8832802b2b5d009dde0197a3b7b41c8",
+   "builds": [
+    "https://github.com/wheelgap/tracker/actions/runs/43894541935",
+    "https://github.com/wheelgap/tracker/actions/runs/43894558102"
+   ],
+   "licence": "BSD-3-Clause",
+   "requires_python": ">=3.8",
+   "verified": "2026-11-16",
+   "batch": "https://github.com/wheelgap/tracker/actions/runs/43894336463",
+   "published": "2026-11-16",
+   "publish_run": "https://github.com/wheelgap/tracker/actions/runs/43894336463"
   },
   {
    "name": "tokenizers",
