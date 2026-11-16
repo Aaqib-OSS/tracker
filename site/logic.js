@@ -15,6 +15,30 @@ const LOCK_URL = /^https:\/\/cdn\.jsdelivr\.net\/pyodide\/v[0-9][0-9.a-z]*\/full
 const isText = (v) => typeof v === "string" && v.length > 0 && v.length < 200;
 const isCount = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0;
 
+// A PEP 508 distribution name. A name typed in the search box or taken from the #package= fragment ends up in the
+// lookup's copy-paste `uvx wheelgap <name>` command, so anything else must not reach it.
+const PACKAGE_NAME = /^([A-Z0-9]|[A-Z0-9][A-Z0-9._-]*[A-Z0-9])$/i;
+
+function isPackageName(name) {
+  return typeof name === "string" && PACKAGE_NAME.test(name);
+}
+
+// A package name, optionally pinned as name==version (the lookup card invites a pinned version). The version allows
+// only letters, digits and . + _ - so it can't change the command either.
+const PINNED_VERSION = /^[A-Z0-9][A-Z0-9.+_-]*$/i;
+
+function isPackageSpec(spec) {
+  if (typeof spec !== "string") return false;
+  const [name, version, ...rest] = spec.split("==");
+  return !rest.length && isPackageName(name) && (version === undefined || PINNED_VERSION.test(version));
+}
+
+// The name and the pinned version (or null) of a lookup query: "numpy==2.0.0" looks up numpy.
+function splitSpec(spec) {
+  const [name, version] = String(spec).trim().split("==");
+  return [name, version === undefined ? null : version];
+}
+
 function installable(status) {
   return INSTALLABLE.has(status);
 }
@@ -125,7 +149,7 @@ function labVerdict(r) {
 
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
-    BUNDLED_NOTE, installable, gapsAt, platformStats, pyodideReleases, bundledInfo, bundledDetail, whyCommand, pyodideFooter,
+    BUNDLED_NOTE, isPackageName, isPackageSpec, splitSpec, installable, gapsAt, platformStats, pyodideReleases, bundledInfo, bundledDetail, whyCommand, pyodideFooter,
     labVerdict,
   };
 }

