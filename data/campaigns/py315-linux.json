@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "campaign": "py315-linux",
+  "target": "3.15 linux-x86_64",
+  "top": 500,
+  "start": "2026-11-16",
+  "recorded": "2026-11-16",
+  "wheelgap": "0.9.0",
+  "compare": "python",
+  "packages": [
+    {"name": "pyyaml", "rank": 12, "status": "source"},
+    {"name": "orjson", "rank": 152, "status": "source"},
+    {"name": "zstandard", "rank": 173, "status": "source"},
+    {"name": "onnxruntime", "rank": 285, "status": "missing"},
+    {"name": "lz4", "rank": 319, "status": "source"},
+    {"name": "fastuuid", "rank": 334, "status": "source"},
+    {"name": "ruamel-yaml-clib", "rank": 376, "status": "source"},
+    {"name": "tree-sitter", "rank": 480, "status": "source"},
+    {"name": "confluent-kafka", "rank": 494, "status": "source"}
+  ]
+}
