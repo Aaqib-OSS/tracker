@@ -455,7 +455,7 @@ class Rotation(unittest.TestCase):
         self.assertEqual(names(0), names(len(everyone)))  # wraps around
 
     def test_members_too_big_to_list_still_leave_the_result(self):
-        def fake_run_build(name, version, attempt, work, members):
+        def fake_run_build(name, version, attempt, work, members, keep=None):
             members.update({f"pkg/f{i}.py": "a" * 64 for i in range(gap_wheels.MAX_MEMBERS + 1)})
             return {"sdist": None, "sdist_sha256": None, "wheel": None, "sha256": None, "installs": None}
 
@@ -469,6 +469,323 @@ class Rotation(unittest.TestCase):
                                  "--attempt", "1", "--runner", "windows-11-arm", "--out", str(out)])  # fmt: skip
             self.assertEqual(json.loads(out.read_text())["name"], "tiktoken")
             self.assertEqual(json.loads((Path(tmp) / "members.json").read_text()), {})
+
+
+
+# --- stage, install-test and publish -------------------------------------------------------------------------------
+
+WIN = "tiktoken-0.14.0-cp314-cp314-win_arm64.whl"
+
+
+def verified(name="tiktoken", wheel=WIN, sha="c" * 64, target="3.14 win-arm64"):
+    return {"name": name, "version": "0.14.0", "target": target, "wheel": wheel, "sha256": sha,
+            "sdist": f"{name}-0.14.0.tar.gz", "sdist_sha256": "a" * 64,
+            "builds": ["https://github.com/wheelgap/tracker/actions/runs/11",
+                       "https://github.com/wheelgap/tracker/actions/runs/12"]}  # fmt: skip
+
+
+MIT = {"license_expression": "MIT", "requires_python": ">=3.9"}
+
+
+def zipped(members):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for name, data in members.items():
+            z.writestr(name, data)
+    return buf.getvalue()
+
+
+class Stage(unittest.TestCase):
+    def test_only_windows_wheels_with_a_licence_and_no_opt_out(self):
+        self.assertIsNone(gap_wheels.stage_reason(verified(), MIT, set()))
+        linux = verified(wheel="lz4-4.4.5-cp314-cp314-linux_aarch64.whl", target="3.14 musl-aarch64")
+        self.assertIn("auditwheel", gap_wheels.stage_reason(linux, MIT, set()))
+        self.assertEqual(gap_wheels.stage_reason(verified(), MIT, {"tiktoken"}), "the project opted out")
+        self.assertEqual(gap_wheels.stage_reason(verified(), None, set()), "couldn't ask PyPI for the licence")
+        self.assertIn("licence", gap_wheels.stage_reason(verified(), {"license": "see LICENSE"}, set()))
+        plus = verified(wheel="tiktoken-0.14.0+local-cp314-cp314-win_arm64.whl")
+        self.assertIn("release asset", gap_wheels.stage_reason(plus, MIT, set()))
+
+    def test_only_the_targets_one_exact_tag(self):
+        self.assertTrue(gap_wheels.tag_ok("x-1.0-cp314-cp314-win_arm64.whl", "3.14 win-arm64"))
+        self.assertTrue(gap_wheels.tag_ok("x-1.0-cp314-cp314t-win_arm64.whl", "3.14t win-arm64"))
+        for wheel, target in (
+            ("x-1.0-cp314-cp314-win_arm64.win_amd64.whl", "3.14 win-arm64"),  # an ARM64 .pyd on x64
+            ("x-1.0-cp314-cp314-win_arm64.linux_aarch64.whl", "3.14 win-arm64"),
+            ("x-1.0-cp38-abi3-win_arm64.whl", "3.14 win-arm64"),  # other Pythons would take it untested
+            ("x-1.0-py3-none-win_arm64.whl", "3.14 win-arm64"),
+            ("x-1.0-cp314-cp314-win_arm64.whl", "3.14t win-arm64"),
+            ("x-1.0-cp314-cp314t-linux_x86_64.whl", "3.14t linux-x86_64"),
+            ("x-1.0-cp314-cp314-WIN_ARM64.whl", "3.14 win-arm64"),
+        ):
+            with self.subTest(wheel):
+                self.assertFalse(gap_wheels.tag_ok(wheel, target))
+
+    def test_licence(self):
+        self.assertEqual(gap_wheels.licence({"license_expression": "Apache-2.0 OR MIT"}), "Apache-2.0 OR MIT")
+        self.assertIsNone(gap_wheels.licence({"license_expression": "LicenseRef-Proprietary"}))
+        self.assertIsNone(gap_wheels.licence({"license_expression": "MIT<script>"}))
+        for not_osi in ("BUSL-1.1", "CC-BY-NC-4.0", "SSPL-1.0", "Elastic-2.0", "MIT AND BUSL-1.1", "CC0-1.0",
+                        "MIT WITH BUSL-1.1", "Apache-2.0 WITH LicenseRef-NC", "AND", "MIT AND", "(MIT", "MIT)",
+                        "MIT OR OR Apache-2.0", "PSF-2.0"):  # fmt: skip
+            with self.subTest(not_osi):
+                self.assertIsNone(gap_wheels.licence({"license_expression": not_osi}))
+        for osi in ("(MIT OR Apache-2.0) AND BSD-3-Clause", "GPL-2.0-or-later WITH Classpath-exception-2.0",
+                    "apache-2.0", "LGPL-2.1+"):  # fmt: skip
+            with self.subTest(osi):
+                self.assertEqual(gap_wheels.licence({"license_expression": osi}), osi)
+        osi = {"classifiers": ["License :: OSI Approved :: BSD License", "Programming Language :: Python"]}
+        self.assertEqual(gap_wheels.licence(osi), "BSD License")
+        self.assertIsNone(gap_wheels.licence({"license": "MIT", "classifiers": []}))  # free text isn't read
+        self.assertIsNone(gap_wheels.licence("nope"))
+
+    def test_unwrap_takes_only_the_verified_bytes(self):
+        data = b"wheel bytes"
+        sha = hashlib.sha256(data).hexdigest()
+        self.assertEqual(gap_wheels.unwrap_wheel(zipped({WIN: data}), WIN, sha), data)
+        self.assertIsNone(gap_wheels.unwrap_wheel(zipped({WIN: b"other"}), WIN, sha))  # substituted bytes
+        self.assertIsNone(gap_wheels.unwrap_wheel(zipped({WIN: data, "extra.txt": b""}), WIN, sha))
+        self.assertIsNone(gap_wheels.unwrap_wheel(zipped({"other.whl": data}), WIN, sha))
+        self.assertIsNone(gap_wheels.unwrap_wheel(b"not a zip", WIN, sha))
+
+    def test_stage_writes_the_files_and_outputs(self):
+        data = b"wheel bytes"
+        good_one = verified(sha=hashlib.sha256(data).hexdigest())
+        linux = verified(name="lz4", wheel="lz4-4.4.5-cp314-cp314-linux_aarch64.whl", target="3.14 musl-aarch64")
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "m.json").write_text(json.dumps({"date": "2026-11-16", "run": "R", "wheels": [good_one, linux]}))
+            out = tmp / "out.txt"
+            args = gap_wheels.main.__globals__["argparse"].Namespace(
+                manifest=str(tmp / "m.json"), staged=str(tmp / "staged"), repo="wheelgap/tracker",
+                optout=str(tmp / "none"), summary=None, github_output=str(out))  # fmt: skip
+            with mock.patch.object(gap_wheels, "pypi_info", return_value=MIT), \
+                 mock.patch.object(gap_wheels, "missing_dlls", return_value=[]), \
+                 mock.patch.object(gap_wheels, "fetch_wheel", return_value=zipped({WIN: data})) as fetch:  # fmt: skip
+                gap_wheels.cmd_stage(args)
+            fetch.assert_called_once_with("wheelgap/tracker", 11)  # build 1's run
+            self.assertEqual((tmp / "staged" / WIN).read_bytes(), data)
+            lines = dict(line.split("=", 1) for line in out.read_text().splitlines())
+            staged = json.loads(lines["staged"])
+            self.assertEqual([w["wheel"] for w in staged], [WIN])
+            self.assertEqual(staged[0]["licence"], "MIT")
+            self.assertEqual(staged[0]["requires_python"], ">=3.9")
+            self.assertEqual(gap_wheels.trusted_staged(lines["staged"]), staged)
+            self.assertEqual(json.loads(lines["tests"]), [{"target": "3.14 win-arm64", "runner": "windows-11-arm",
+                                                           "python": "3.14", "slug": "3.14-win-arm64"}])  # fmt: skip
+
+    def test_a_build_run_with_other_bytes_falls_back_to_the_other_build(self):
+        data = b"wheel bytes"
+        one = verified(sha=hashlib.sha256(data).hexdigest())
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "m.json").write_text(json.dumps({"wheels": [one]}))
+            args = gap_wheels.main.__globals__["argparse"].Namespace(
+                manifest=str(tmp / "m.json"), staged=str(tmp / "staged"), repo="r/r", optout=str(tmp / "none"),
+                summary=None, github_output=None)  # fmt: skip
+            archives = {11: zipped({WIN: b"forged"}), 12: zipped({WIN: data})}
+            with mock.patch.object(gap_wheels, "pypi_info", return_value=MIT), \
+                 mock.patch.object(gap_wheels, "missing_dlls", return_value=[]), \
+                 mock.patch.object(gap_wheels, "fetch_wheel", side_effect=lambda repo, rid: archives[rid]):  # fmt: skip
+                gap_wheels.cmd_stage(args)
+            self.assertEqual((tmp / "staged" / WIN).read_bytes(), data)
+
+
+class Publish(unittest.TestCase):
+    def staged(self, tmp, data=b"wheel bytes"):
+        w = {**verified(sha=hashlib.sha256(data).hexdigest()), "licence": "MIT", "requires_python": None,
+             "verified": "2026-11-16", "batch": "R"}  # fmt: skip
+        (tmp / "files").mkdir(exist_ok=True)
+        (tmp / "files" / WIN).write_bytes(data)
+        return w
+
+    def mark_tested(self, tmp, target="3.14 win-arm64", ok=True, slug="3.14-win-arm64"):
+        (tmp / "tested" / f"tested-{slug}").mkdir(parents=True, exist_ok=True)
+        (tmp / "tested" / f"tested-{slug}" / "tested.json").write_text(json.dumps({"target": target, "tested": {WIN: ok}}))
+
+    def publish(self, tmp, staged, optout=""):
+        (tmp / "optout.txt").write_text(optout)
+        args = gap_wheels.main.__globals__["argparse"].Namespace(
+            staged_json=json.dumps(staged), files=str(tmp / "files"), tested=str(tmp / "tested"),
+            index=str(tmp / "index.json"), release_dir=str(tmp / "release"), optout=str(tmp / "optout.txt"),
+            run="RUN", summary=None)  # fmt: skip
+        gap_wheels.cmd_publish(args)
+        return json.loads((tmp / "index.json").read_text())
+
+    def test_a_tested_verified_wheel_publishes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            w = self.staged(tmp)
+            self.mark_tested(tmp)
+            index = self.publish(tmp, [w])
+            self.assertEqual([x["wheel"] for x in index["wheels"]], [WIN])
+            self.assertEqual(index["wheels"][0]["publish_run"], "RUN")
+            self.assertTrue((tmp / "release" / WIN).is_file())
+            # Again: already published, nothing new to upload.
+            (tmp / "release" / WIN).unlink()
+            index = self.publish(tmp, [w])
+            self.assertEqual(len(index["wheels"]), 1)
+            self.assertFalse((tmp / "release" / WIN).exists())
+
+    def test_untested_failed_or_swapped_wheels_dont_publish(self):
+        for case in ("untested", "failed", "swapped", "two answers"):
+            with self.subTest(case), tempfile.TemporaryDirectory() as tmp:
+                tmp = Path(tmp)
+                w = self.staged(tmp)
+                if case == "failed":
+                    self.mark_tested(tmp, ok=False)
+                elif case == "swapped":
+                    self.mark_tested(tmp)
+                    (tmp / "files" / WIN).write_bytes(b"forged by a test job")
+                elif case == "two answers":
+                    self.mark_tested(tmp)
+                    self.mark_tested(tmp, slug="forged")
+                index = self.publish(tmp, [w])
+                self.assertEqual(index["wheels"], [])
+                self.assertFalse((tmp / "release" / WIN).exists())
+
+    def test_only_the_staging_jobs_output_is_trusted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            w = self.staged(tmp)
+            for bad in ([{**w, "wheel": "../x.whl"}], [{**w, "extra": 1}], [{**w, "sha256": "zz"}],
+                        [{**w, "wheel": "lz4-1-cp314-cp314-linux_aarch64.whl"}], {"not": "a list"}):  # fmt: skip
+                with self.subTest(bad), self.assertRaises(SystemExit):
+                    gap_wheels.trusted_staged(json.dumps(bad))
+
+    def test_an_opted_out_project_is_withdrawn(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            w = self.staged(tmp)
+            self.mark_tested(tmp)
+            self.publish(tmp, [w])
+            index = self.publish(tmp, [], optout="# comment\nTikToken\n")
+            self.assertEqual(index["wheels"], [])
+            self.assertEqual((tmp / "release" / "withdraw.txt").read_text(), f"{WIN}\n")
+
+
+class KeepTheWheel(unittest.TestCase):
+    def test_build_passes_the_wheel_dir_through(self):
+        seen = {}
+
+        def fake_run_build(name, version, attempt, work, members, keep=None):
+            seen["keep"] = keep
+            return {"sdist": None, "sdist_sha256": None, "wheel": None, "sha256": None, "installs": None}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with (
+                mock.patch.object(gap_wheels, "run_build", fake_run_build),
+                mock.patch.object(gap_wheels.build_lab, "interpreter_problem", lambda target: None),
+            ):
+                gap_wheels.main(["build", "--name", "tiktoken", "--version", "0.14.0", "--target", "3.14 win-arm64",
+                                 "--attempt", "2", "--runner", "windows-11-arm", "--out", str(Path(tmp) / "r.json"),
+                                 "--wheel-dir", str(Path(tmp) / "wheel")])  # fmt: skip
+        self.assertEqual(seen["keep"], Path(tmp) / "wheel")
+
+
+def tiny_wheel(folder, body):
+    """A pure wheel pip installs offline: demo-1.0, one module whose import runs `body`."""
+    path = folder / "demo-1.0-py3-none-any.whl"
+    files = {"demo.py": body, "demo-1.0.dist-info/METADATA": "Metadata-Version: 2.1\nName: demo\nVersion: 1.0\n",
+             "demo-1.0.dist-info/WHEEL": "Wheel-Version: 1.0\nGenerator: test\nRoot-Is-Purelib: true\nTag: py3-none-any\n"}  # fmt: skip
+    record = "".join(f"{n},,\n" for n in files) + "demo-1.0.dist-info/RECORD,,\n"
+    with zipfile.ZipFile(path, "w") as z:
+        for name, text in files.items():
+            z.writestr(name, text)
+        z.writestr("demo-1.0.dist-info/RECORD", record)
+    return path
+
+
+class InstallAndImport(unittest.TestCase):
+    def test_a_wheel_that_imports_passes_and_one_that_raises_doesnt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "ok").mkdir()
+            (tmp / "bad").mkdir()
+            ok = tiny_wheel(tmp / "ok", "VALUE = 1\n")
+            bad = tiny_wheel(tmp / "bad", "raise RuntimeError('broken on import')\n")
+            self.assertIsNone(gap_wheels.install_and_import(ok, "3.14 win-arm64", tmp / "w1"))
+            self.assertEqual(gap_wheels.install_and_import(bad, "3.14 win-arm64", tmp / "w2"), "the top import check failed")
+
+
+def pe(dlls, delay=()):
+    """A minimal PE32+ file importing `dlls` (and delay-loading `delay`): what pe_imports reads, nothing more."""
+    raw, va, size = 0x200, 0x1000, 0x400
+    section = bytearray(size)
+    names_at = 0x200
+    imp_desc, delay_desc = 0, 0x100
+    for n, name in enumerate(dlls):
+        rva = va + names_at
+        section[names_at : names_at + len(name) + 1] = name.encode() + b"\0"
+        names_at += len(name) + 1
+        section[imp_desc + n * 20 + 12 : imp_desc + n * 20 + 16] = rva.to_bytes(4, "little")
+    for n, name in enumerate(delay):
+        rva = va + names_at
+        section[names_at : names_at + len(name) + 1] = name.encode() + b"\0"
+        names_at += len(name) + 1
+        section[delay_desc + n * 32 + 4 : delay_desc + n * 32 + 8] = rva.to_bytes(4, "little")
+    head = bytearray(raw)
+    head[0:2] = b"MZ"
+    head[0x3C:0x40] = (0x40).to_bytes(4, "little")
+    head[0x40:0x44] = b"PE\0\0"
+    head[0x46:0x48] = (1).to_bytes(2, "little")  # one section
+    head[0x54:0x56] = (240).to_bytes(2, "little")  # SizeOfOptionalHeader
+    opt = 0x58
+    head[opt : opt + 2] = (0x20B).to_bytes(2, "little")
+    dirs = opt + 112
+    head[dirs - 4 : dirs] = (16).to_bytes(4, "little")
+    if dlls:
+        head[dirs + 8 : dirs + 12] = (va + imp_desc).to_bytes(4, "little")
+    if delay:
+        head[dirs + 8 * 13 : dirs + 8 * 13 + 4] = (va + delay_desc).to_bytes(4, "little")
+    sec = opt + 240
+    head[sec : sec + 8] = b".rdata\0\0"
+    head[sec + 8 : sec + 12] = size.to_bytes(4, "little")
+    head[sec + 12 : sec + 16] = va.to_bytes(4, "little")
+    head[sec + 16 : sec + 20] = size.to_bytes(4, "little")
+    head[sec + 20 : sec + 24] = raw.to_bytes(4, "little")
+    return bytes(head + section)
+
+
+class Dlls(unittest.TestCase):
+    def test_reads_imports_and_delay_loads(self):
+        data = pe(["KERNEL32.dll", "python314.dll"], delay=["MSVCP140.dll"])
+        self.assertEqual(gap_wheels.pe_imports(data), {"kernel32.dll", "python314.dll", "msvcp140.dll"})
+
+    def test_garbage_and_truncated_files_are_unreadable(self):
+        good_pe = pe(["kernel32.dll"])
+        for bad in (b"", b"MZ", b"not a pe" * 100, good_pe[:0x150], good_pe[:0x210]):
+            with self.subTest(len(bad)):
+                self.assertIsNone(gap_wheels.pe_imports(bad))
+
+    def test_a_wheel_needing_msvcp140_isnt_self_contained(self):
+        system = pe(["python314.dll", "VCRUNTIME140.dll", "api-ms-win-crt-runtime-l1-1-0.dll", "KERNEL32.dll"])
+        self.assertEqual(gap_wheels.missing_dlls(zipped({"pkg/_ext.cp314-win_arm64.pyd": system})), [])
+        cpp = pe(["python314.dll", "MSVCP140.dll", "vcomp140.dll"])
+        self.assertEqual(gap_wheels.missing_dlls(zipped({"pkg/_ext.pyd": cpp})), ["msvcp140.dll", "vcomp140.dll"])
+        beside = zipped({"pkg/_ext.pyd": cpp, "pkg/msvcp140.dll": system, "pkg/vcomp140.dll": system})
+        self.assertEqual(gap_wheels.missing_dlls(beside), [])
+        # Elsewhere in the wheel isn't where Windows looks for the .pyd's DLLs.
+        elsewhere = zipped({"pkg/_ext.pyd": cpp, "junk/msvcp140.dll": system, "pkg/vcomp140.dll": system})
+        self.assertEqual(gap_wheels.missing_dlls(elsewhere), ["msvcp140.dll"])
+        many = zipped({**{f"pkg/m{i}.pyd": system for i in range(500)}, "pkg/last.pyd": cpp})
+        self.assertIsNone(gap_wheels.missing_dlls(many))  # too many to check: refused, not half-checked
+        self.assertIsNone(gap_wheels.missing_dlls(zipped({"pkg/_ext.pyd": b"MZ junk"})))
+
+    def test_an_unreadable_wheel_costs_only_itself(self):
+        # A corrupt LZMA member raises lzma.LZMAError, which nothing expects: that wheel is skipped, the batch goes on.
+        with mock.patch.object(gap_wheels, "fetch_wheel", return_value=b"x"), \
+             mock.patch.object(gap_wheels, "unwrap_wheel", return_value=b"bytes"), \
+             mock.patch.object(gap_wheels, "missing_dlls", side_effect=__import__("lzma").LZMAError("corrupt")):  # fmt: skip
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp = Path(tmp)
+                (tmp / "m.json").write_text(json.dumps({"wheels": [verified()]}))
+                args = gap_wheels.main.__globals__["argparse"].Namespace(
+                    manifest=str(tmp / "m.json"), staged=str(tmp / "staged"), repo="r/r", optout=str(tmp / "none"),
+                    summary=None, github_output=None)  # fmt: skip
+                with mock.patch.object(gap_wheels, "pypi_info", return_value=MIT):
+                    self.assertEqual(gap_wheels.cmd_stage(args), 0)
+                self.assertEqual(json.loads((tmp / "staged" / "staged.json").read_text()), [])
 
 
 if __name__ == "__main__":
