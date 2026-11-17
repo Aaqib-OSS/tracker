@@ -49,7 +49,23 @@ function statusBadge(status) {
 }
 
 // pyodide: data/pyodide.json through pyodideReleases(), {python: {pyodide, lock}} for each pinned Pyodide release.
-const bundledCache = new Map(); // canonical name -> bundledInfo() of its data/packages/<name>.json
+const lookupDetails = new Map(); // canonical name -> its data/packages/<name>.json, once fetched
+const pendingDetails = new Map(); // canonical name -> the fetch in flight (or done); dropped on failure so it can retry
+function fetchLookupDetails(name) {
+  if (!pendingDetails.has(name)) {
+    const request = fetch(`data/packages/${encodeURIComponent(name)}.json`)
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)
+      .then((data) => {
+        if (data) lookupDetails.set(name, data);
+        else pendingDetails.delete(name);
+        return data;
+      });
+    pendingDetails.set(name, request);
+  }
+  return pendingDetails.get(name);
+}
+
 const state = {
   data: null,
   history: [],
@@ -780,16 +796,37 @@ function badgeMarkdown(p) {
 }
 
 // Deep Package Inspection (used in drawer and card)
-function buildPackageCardHTML(p, extra = null, pinNote = "") {
+function buildPackageCardHTML(p, extra = null, pinNote = "", details = null) {
   const pys = pythons();
+  const installData = !pinNote ? lookupInstallData(details, p, state.data.targets) : [];
+  const byTarget = new Map(installData.map((row) => [row.label, row]));
+  // Same pills and words as the package pages' install section (INSTALL_STATUS in scripts/build_pages.py).
+  const installStatus = { wheel: ["wheel", "Wheels for the whole tree"], source: ["source", "Builds from source"],
+    missing: ["missing", "Missing distribution"], not_checked: ["unknown", "Not checked"] };
+  const installRows = installData.filter((row) => row.status !== "not_checked" || details?.install?.[row.label])
+    .map((row) => {
+      const blockers = row.blockers.length ? `<ul>${row.blockers.map((b) => `
+        <li><code>${esc(b.name)}${b.version ? "==" + esc(b.version) : ""}</code>
+        ${b.status === "source" ? "builds from source" : "has no distribution"}
+        ${b.via.length > 1 ? " via <code>" + b.via.map(esc).join(" → ") + "</code>" : ""}</li>`).join("")}</ul>` : "";
+      const [style, label] = installStatus[row.status];
+      return `<tr><th scope="row">${esc(row.label)}</th><td><span class="status s-${style}">${esc(label)}</span>${blockers}</td></tr>`;
+    }).join("");
+  const installSection = installRows
+    ? `<section aria-labelledby="lookup-install-title" style="margin-top:12px"><h4 id="lookup-install-title">Install coverage with dependencies</h4>
+      <p class="sub">For the scanned release without extras. "Not checked" means wheelgap could not verify the whole tree.</p>
+      <div class="matrix-scroll"><table class="matrix"><thead><tr><th>Target</th><th>Install result</th></tr></thead>
+      <tbody>${installRows}</tbody></table></div></section>` : "";
   const platforms = Object.keys(PLATFORM_NAMES).filter((pl) => state.data.targets.some((t) => t.platform === pl));
   const cell = (py, pl) => {
     const i = targetIndex(py, pl);
     if (i < 0) return `<td><span class="status s-none">n/a</span></td>`;
     const s = p.results[i];
     const detail = s === "bundled" && extra ? bundledDetail(extra[state.data.targets[i].label]) : "";
+    const hint = byTarget.get(state.data.targets[i].label)?.wayOut;
+    const wayOut = hint ? `<small class="bver" style="display:block;margin-top:2px;font-size:0.72rem;color:var(--text-muted)">${hint.kind === "older" ? esc(hint.release) + " is the last release with a wheel here." : "Upgrade to " + esc(hint.release) + " for a wheel here."}</small>` : "";
     const small = detail ? `<small class="bver" style="display:block;margin-top:2px;font-size:0.72rem;color:var(--text-muted)">${esc(detail)}</small>` : "";
-    return `<td>${statusBadge(s)}${small}</td>`;
+    return `<td>${statusBadge(s)}${small}${wayOut}</td>`;
   };
 
   return `<div class="card">
@@ -808,6 +845,7 @@ function buildPackageCardHTML(p, extra = null, pinNote = "") {
         .join("")}</tbody>
     </table></div>
     ${!p.error && p.results.includes("bundled") ? `<p class="sub" style="margin:12px 0 0">${esc(BUNDLED_NOTE)}</p>` : ""}
+    ${installSection}
     ${
       targetIndex(state.python, state.platform) < 0
         ? ""
@@ -844,23 +882,16 @@ function renderLookup(query, extra = null) {
       <code>uvx wheelgap ${esc(spec)} -t all</code></p>`
     : "";
 
-  $("lookup").innerHTML = buildPackageCardHTML(p, extra, pinNote);
+  // extra: the package's data/packages/<name>.json when re-rendering after the fetch ({} if it failed).
+  const documentData = extra ?? lookupDetails.get(q) ?? null;
+  $("lookup").innerHTML = buildPackageCardHTML(p, bundledInfo(documentData), pinNote, documentData);
 
-
-  if (extra === null && !p.error && p.results.includes("bundled")) {
-    const cached = bundledCache.get(q);
-    const got = cached
-      ? Promise.resolve(cached)
-      : fetch(`data/packages/${encodeURIComponent(q)}.json`)
-          .then((r) => (r.ok ? r.json() : null))
-          .then((json) => {
-            const info = bundledInfo(json);
-            bundledCache.set(q, info);
-            return info;
-          });
-    got
-      .then((info) => {
-        if (canonicalName($("search").value.trim()) === q) renderLookup(query, info);
+  if (extra === null && !lookupDetails.has(q) && !pendingDetails.has(q) && !p.error && isPackageSpec(spec)) {
+    fetchLookupDetails(q)
+      .then((doc) => {
+        // Still this package, even if the box now holds another version of it: re-render what it says now.
+        const current = $("search").value.trim();
+        if (canonicalName(splitSpec(current)[0]) === q) renderLookup(current, doc || {});
       })
       .catch(() => {});
   }
@@ -874,7 +905,8 @@ function openDrawer(packageName) {
 
   $("drawer-title").textContent = p.name;
   $("drawer-subtitle").textContent = `#${fmt(p.rank)} by downloads · ${formatDownloads(p.downloads)} dl/mo`;
-  $("drawer-content").innerHTML = buildPackageCardHTML(p, null);
+  const doc = lookupDetails.get(q) ?? null;
+  $("drawer-content").innerHTML = buildPackageCardHTML(p, bundledInfo(doc), "", doc);
 
 
   if ($("drawer").hidden) drawerReturnFocus = document.activeElement;
@@ -883,21 +915,11 @@ function openDrawer(packageName) {
   document.body.style.overflow = "hidden";
   $("drawer-close")?.focus();
 
-  if (!p.error && p.results.includes("bundled")) {
-    const cached = bundledCache.get(q);
-    const got = cached
-      ? Promise.resolve(cached)
-      : fetch(`data/packages/${encodeURIComponent(q)}.json`)
-          .then((r) => (r.ok ? r.json() : null))
-          .then((json) => {
-            const info = bundledInfo(json);
-            bundledCache.set(q, info);
-            return info;
-          });
-    got
-      .then((info) => {
-        if ($("drawer-title").textContent === p.name) {
-          $("drawer-content").innerHTML = buildPackageCardHTML(p, info);
+  if (!p.error && !doc) {
+    fetchLookupDetails(q)
+      .then((fetched) => {
+        if (fetched && $("drawer-title").textContent === p.name) {
+          $("drawer-content").innerHTML = buildPackageCardHTML(p, bundledInfo(fetched), "", fetched);
         }
       })
       .catch(() => {});
