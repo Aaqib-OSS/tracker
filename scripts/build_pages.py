@@ -29,6 +29,7 @@ if __package__:  # imported as scripts.build_pages (the tests)
         check_notes,
         install_results,
         pyodide_locks,
+        update_changes,
     )
 else:  # run as python scripts/build_pages.py
     import build_badges
@@ -38,6 +39,7 @@ else:  # run as python scripts/build_pages.py
     import check_notes
     import install_results
     import pyodide_locks
+    import update_changes
 
 SCAN_SCHEMA = 1
 SAFE_NAME = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
@@ -430,6 +432,51 @@ def lab_html(builds: list[dict]) -> str:
     )
 
 
+def format_target(label: str) -> str:
+    """'3.14 win-arm64' -> 'Windows ARM64, Python 3.14' (a coverage.json target label)."""
+    python, platform = label.split(" ", 1)
+    return f"{PLATFORM_NAMES.get(platform, platform)}, Python {python}"
+
+
+def changes_html(changes: list[dict] | None) -> str:
+    """The Recent changes section: the package's 10 newest entries from changes_by_package,
+    or nothing when it has none."""
+    if not changes:
+        return ""
+    e = html.escape
+    items = [
+        f"        <li>{e(c['date'])}: {'gained' if c['gained'] else 'lost'} a wheel"
+        f" for {e(format_target(c['target']))}</li>\n"
+        for c in changes[:10]
+    ]
+    if len(changes) > 10:
+        items.append(f"        <li>and {len(changes) - 10} more</li>\n")
+    return (
+        '    <section aria-labelledby="recent-changes">\n'
+        '      <h2 id="recent-changes">Recent changes</h2>\n'
+        "      <p class=\"sub\">Wheels gained and lost in the nightly scans, newest first"
+        f" (the log keeps {update_changes.KEEP_DAYS} days).</p>\n"
+        "      <ul>\n"
+        f"{''.join(items)}"
+        "      </ul>\n"
+        "    </section>\n"
+    )
+
+
+def changes_by_package(changes: list[dict]) -> dict[str, list[dict]]:
+    """Each package's wheel gains and losses from changes.json (the list of days
+    update_changes.py writes), keyed by canonical name: newest day first, and within a
+    day losses before gains, as on the home page."""
+    by_pkg: dict[str, list[dict]] = {}
+    for day in sorted(changes, key=lambda d: d["date"], reverse=True):
+        for kind in ("lost", "gained"):
+            for item in day[kind]:
+                by_pkg.setdefault(canonical(item["name"]), []).append(
+                    {"date": day["date"], "gained": kind == "gained", "target": item["target"]}
+                )
+    return by_pkg
+
+
 def page(
     package: dict,
     scan: dict,
@@ -440,6 +487,7 @@ def page(
     campaigns: list[tuple[str, dict]] | None = None,
     tree_badge: bool = False,
     builds: list[dict] | None = None,
+    changes: list[dict] | None = None,
     page_names: set[str] | None = None,
 ) -> str:
     """The package's page. notes are its notes from notes/ (stale ones are left out here);
@@ -447,7 +495,7 @@ def page(
     found is pyodide_locks.releases(scan): the Pyodide release behind each Python's bundled cells.
     campaigns pairs each membership status with its loaded campaign. tree_badge says whether
     build_badges writes badge/<name>-tree.json, so the page shows its snippet too.
-    builds holds the package's build lab results."""
+    builds holds the package's build lab results; changes is its entry from changes_by_package."""
     found = found or {}
     bundled = pyodide_locks.bundled(package, scan["targets"], found)
     way_out = package.get("way_out", {})
@@ -540,6 +588,7 @@ def page(
     # that result old news, not something to show.
     source_labels = {t["label"] for t, st in zip(targets, package["results"]) if st == "source"}
     lab_section = lab_html([r for r in current_builds if r.get("target") in source_labels])
+    changes_section = changes_html(changes)
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -579,7 +628,7 @@ def page(
         </tbody>
       </table></div>{ask}{why}
     </div>
-{install_section}{lab_section}{notes_section}    <section>
+{changes_section}{install_section}{lab_section}{notes_section}    <section>
       <h2>Badge for your README</h2>
       <pre class="badge-md">{badge_code}</pre>
       <p class="sub"><a href="../../data/packages/{e(slug)}.json">Package JSON</a></p>
@@ -598,11 +647,13 @@ def build(
     root: Path = pyodide_locks.ROOT,
     config_path: Path | None = None,
     builds_path: Path | None = None,
+    changes_path: Path | None = None,
 ) -> int:
     """Write the pages and the sitemap; notes come from notes_dir, or none when it is None.
     root holds pyodide/locks.json and the lock files it names.
     config_path defaults to campaigns.toml beside the scan's data directory.
-    builds_path is the build lab's data/builds.json (None: no lab results)."""
+    builds_path is the build lab's data/builds.json (None: no lab results).
+    changes_path defaults to changes.json beside coverage.json."""
     scan = json.loads(coverage_path.read_text(encoding="utf-8"))
     if scan.get("schema") != SCAN_SCHEMA:
         sys.exit(f"build_pages: coverage.json schema {scan.get('schema')!r}, expected {SCAN_SCHEMA}")
@@ -610,11 +661,12 @@ def build(
     lab = build_lookup.lab_results(builds_path)
     python = newest_non_free_threaded(scan["targets"])
     found = pyodide_locks.releases(scan, root)
+    changes_path = changes_path or coverage_path.parent / "changes.json"
+    changes = json.loads(changes_path.read_text(encoding="utf-8")) if changes_path.exists() else []
+    pkg_changes = changes_by_package(changes)
     memberships: dict[str, list[tuple[str, dict]]] = {}
     config_path = config_path or coverage_path.parent.parent / "campaigns.toml"
     if config_path.exists():
-        changes_path = coverage_path.parent / "changes.json"
-        changes = json.loads(changes_path.read_text(encoding="utf-8")) if changes_path.exists() else []
         for campaign in build_campaigns.load_campaigns(config_path):
             campaign_python = campaign.get("python") or python
             platform = campaign["platform"]
@@ -665,6 +717,7 @@ def build(
             memberships.get(name),
             name in trees,
             builds=lab.get(name, []),
+            changes=pkg_changes.get(name, []),
             page_names=seen,
         )
         (out / "index.html").write_text(text, encoding="utf-8")
