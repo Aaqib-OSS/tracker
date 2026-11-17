@@ -210,7 +210,7 @@ function element() {
   };
 }
 
-async function loadPage(hash, packageData = null) {
+async function loadPage(hash, packageData = null, gapWheelIndex = null) {
   const elements = new Map();
   const location = { hash };
   const get = (id) => {
@@ -232,6 +232,10 @@ async function loadPage(hash, packageData = null) {
       createElement: element,
     },
     fetch: async (url) => {
+      if (url === "../wheels/data/gap-wheels.json") {
+        if (typeof gapWheelIndex === "function") return gapWheelIndex(); // a test's own failing response
+        return { ok: gapWheelIndex !== null, json: async () => gapWheelIndex };
+      }
       if (url.startsWith("data/packages/") && url.endsWith(".json"))
         return { ok: packageData !== null, json: async () => packageData };
       const file = path.join(ROOT, url);
@@ -329,6 +333,49 @@ test("an invalid pin never reaches the checker's command (#57)", async () => {
   vm.runInContext("renderOmniAnswer()", page.context);
   for (const id of ["omni-answer", "omni-minimized-summary", "lookup"]) {
     assert.doesNotMatch(page.get(id).innerHTML, /evil\.example/, id);
+  }
+});
+
+test("lookup offers a verified same-release gap wheel without changing the PyPI status (#129)", async () => {
+  const data = coverage();
+  const pkg = data.packages.find((p) => p.results.some((v) => v === "source" || v === "missing"));
+  assert.ok(pkg);
+  const index = pkg.results.findIndex((v) => v === "source" || v === "missing");
+  const doc = { schema: 1, wheels: [{
+    name: pkg.name, version: pkg.version, target: data.targets[index].label,
+    wheel: "trusted-1.0-cp314.whl", sha256: "a".repeat(64),
+  }] };
+  const page = await loadPage(`#package=${pkg.name}`, null, doc);
+  await new Promise((resolve) => setImmediate(resolve));
+  const html = page.get("lookup").innerHTML;
+  const re = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  assert.match(html, /<h4>Gap wheels<\/h4>/);
+  assert.match(html, new RegExp(`unofficial wheel of ${re(pkg.name)} ${re(pkg.version)} for ${re(data.targets[index].label)},`));
+  assert.match(html, /built from the PyPI sdist\. It isn't from the package's maintainers\./);
+  const canonical = pkg.name.toLowerCase().replace(/[-_.]+/g, "-");
+  assert.match(html, new RegExp(`pip install --extra-index-url https://wheelgap\\.github\\.io/wheels/simple/ ${re(canonical)}==${re(pkg.version)}<`));
+  assert.match(html, /About the gap wheels/);
+  assert.match(html, /<small class="bver" style="[^"]*color:var\(--text-muted\)[^"]*">Unofficial gap wheel available below<\/small>/);
+  assert.match(html, /from source|can&#39;t install/);
+
+  const wrong = await loadPage(`#package=${pkg.name}==0.0.1`, null, doc);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.doesNotMatch(wrong.get("lookup").innerHTML, /Gap wheels|gap wheel available/);
+});
+
+test("missing or unreadable gap-wheel data never prevents the normal lookup (#129)", async () => {
+  const pkg = coverage().packages.find((p) => p.results.includes("source"));
+  const failures = {
+    "an unusable document": { schema: 0, wheels: [] },
+    "a body that isn't JSON": () => ({ ok: true, json: async () => { throw new SyntaxError("bad JSON"); } }),
+    "a failed request": async () => { throw new TypeError("network down"); },
+  };
+  for (const [what, response] of Object.entries(failures)) {
+    const page = await loadPage(`#package=${pkg.name}`, null, response);
+    await new Promise((resolve) => setImmediate(resolve));
+    const html = page.get("lookup").innerHTML;
+    assert.match(html, /Package page/, what);
+    assert.doesNotMatch(html, /Gap wheels|gap wheel available/, what);
   }
 });
 

@@ -90,6 +90,28 @@ function bundledInfo(raw) {
   return out;
 }
 
+// Verified gap-wheel index entries for the exact release and target. Third-party JSON is always untrusted.
+function gapWheelTargets(raw, packageInfo, targets) {
+  if (!raw || raw.schema !== 1 || !Array.isArray(raw.wheels) || raw.wheels.length > 20000 ||
+      !packageInfo || !isPackageName(packageInfo.name) ||
+      typeof packageInfo.version !== "string" || !PINNED_VERSION.test(packageInfo.version) ||
+      !Array.isArray(targets) || !Array.isArray(packageInfo.results)) return [];
+  const canonical = (name) => name.toLowerCase().replace(/[-_.]+/g, "-");
+  const wanted = canonical(packageInfo.name);
+  const available = new Set();
+  for (const item of raw.wheels) {
+    if (!item || typeof item !== "object" || !isPackageName(item.name) ||
+        typeof item.version !== "string" || item.version !== packageInfo.version ||
+        typeof item.target !== "string" || item.target.length > 100 ||
+        typeof item.wheel !== "string" || !/^[A-Za-z0-9._-]{1,200}\.whl$/.test(item.wheel) ||
+        typeof item.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(item.sha256)) continue;
+    if (canonical(item.name) === wanted) available.add(item.target);
+  }
+  return targets.filter((target, index) => target && typeof target.label === "string" &&
+    ["source", "missing"].includes(packageInfo.results[index]) && available.has(target.label))
+    .map((target) => target.label);
+}
+
 // Read only matching, checked whole-tree results from generated package JSON. No HTML or untrusted URLs here.
 function lookupInstallData(raw, pkg, targets) {
   if (!raw || raw.schema !== 1 || !pkg || !isPackageName(pkg.name) ||
@@ -112,7 +134,7 @@ function lookupInstallData(raw, pkg, targets) {
         via: Array.isArray(blocker.via) ? blocker.via
           .filter((name) => typeof name === "string" && name.length < 200) : [],
       })) : [];
-    const hint = hints[target.label];
+    const hint = Object.hasOwn(hints, target.label) ? hints[target.label] : null;
     const wayOut = hint && ["source", "missing"].includes(pkg.results[targets.indexOf(target)]) &&
       ["older", "newer"].includes(hint.kind) &&
       typeof hint.release === "string" && PINNED_VERSION.test(hint.release)
@@ -180,7 +202,7 @@ function labVerdict(r) {
 
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
-    BUNDLED_NOTE, isPackageName, isPackageSpec, splitSpec, installable, gapsAt, platformStats, pyodideReleases, bundledInfo, bundledDetail, lookupInstallData, whyCommand, pyodideFooter,
+    BUNDLED_NOTE, isPackageName, isPackageSpec, splitSpec, installable, gapsAt, platformStats, pyodideReleases, bundledInfo, bundledDetail, lookupInstallData, gapWheelTargets, whyCommand, pyodideFooter,
     labVerdict,
   };
 }

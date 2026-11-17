@@ -49,6 +49,11 @@ function statusBadge(status) {
 }
 
 // pyodide: data/pyodide.json through pyodideReleases(), {python: {pyodide, lock}} for each pinned Pyodide release.
+let gapWheelDoc = null; // wheelgap/wheels' data/gap-wheels.json, once fetched (null if it couldn't be read)
+let gapWheelPromise = null;
+// The pip index is absolute, but the list is fetched as ../wheels/data/gap-wheels.json: that relative path assumes
+// this site and the wheels site share wheelgap.github.io (tracker at /tracker/, wheels at /wheels/).
+const GAP_WHEEL_INDEX = "https://wheelgap.github.io/wheels/simple/";
 const lookupDetails = new Map(); // canonical name -> its data/packages/<name>.json, once fetched
 const pendingDetails = new Map(); // canonical name -> the fetch in flight (or done); dropped on failure so it can retry
 function fetchLookupDetails(name) {
@@ -813,10 +818,20 @@ function buildPackageCardHTML(p, extra = null, pinNote = "", details = null) {
       return `<tr><th scope="row">${esc(row.label)}</th><td><span class="status s-${style}">${esc(label)}</span>${blockers}</td></tr>`;
     }).join("");
   const installSection = installRows
-    ? `<section aria-labelledby="lookup-install-title" style="margin-top:12px"><h4 id="lookup-install-title">Install coverage with dependencies</h4>
+    ? `<section aria-label="Install coverage with dependencies" style="margin-top:12px"><h4>Install coverage with dependencies</h4>
       <p class="sub">For the scanned release without extras. "Not checked" means wheelgap could not verify the whole tree.</p>
       <div class="matrix-scroll"><table class="matrix"><thead><tr><th>Target</th><th>Install result</th></tr></thead>
       <tbody>${installRows}</tbody></table></div></section>` : "";
+  const matches = !pinNote ? gapWheelTargets(gapWheelDoc, p, state.data.targets) : [];
+  const available = new Set(matches);
+  // Same words as the package pages' "Gap wheels" section (scripts/build_pages.py).
+  const gapHint = matches.length
+    ? `<section class="card-gap-wheel" aria-label="Gap wheels" style="margin-top:12px"><h4>Gap wheels</h4>
+        <p class="sub">wheelgap publishes an unofficial wheel of ${esc(p.name)} ${esc(p.version)} for ${matches.map(esc).join(", ")},
+        built from the PyPI sdist. It isn't from the package's maintainers.</p>
+        <p class="sub"><code>pip install --extra-index-url ${GAP_WHEEL_INDEX} ${esc(canonicalName(p.name))}==${esc(p.version)}</code></p>
+        <p class="sub"><a href="https://wheelgap.github.io/wheels/" target="_blank" rel="noopener">About the gap wheels</a></p>
+      </section>` : "";
   const platforms = Object.keys(PLATFORM_NAMES).filter((pl) => state.data.targets.some((t) => t.platform === pl));
   const cell = (py, pl) => {
     const i = targetIndex(py, pl);
@@ -826,7 +841,8 @@ function buildPackageCardHTML(p, extra = null, pinNote = "", details = null) {
     const hint = byTarget.get(state.data.targets[i].label)?.wayOut;
     const wayOut = hint ? `<small class="bver" style="display:block;margin-top:2px;font-size:0.72rem;color:var(--text-muted)">${hint.kind === "older" ? esc(hint.release) + " is the last release with a wheel here." : "Upgrade to " + esc(hint.release) + " for a wheel here."}</small>` : "";
     const small = detail ? `<small class="bver" style="display:block;margin-top:2px;font-size:0.72rem;color:var(--text-muted)">${esc(detail)}</small>` : "";
-    return `<td>${statusBadge(s)}${small}${wayOut}</td>`;
+    const wheelHint = available.has(state.data.targets[i].label) ? '<small class="bver" style="display:block;margin-top:2px;font-size:0.72rem;color:var(--text-muted)">Unofficial gap wheel available below</small>' : "";
+    return `<td>${statusBadge(s)}${small}${wayOut}${wheelHint}</td>`;
   };
 
   return `<div class="card">
@@ -846,6 +862,7 @@ function buildPackageCardHTML(p, extra = null, pinNote = "", details = null) {
     </table></div>
     ${!p.error && p.results.includes("bundled") ? `<p class="sub" style="margin:12px 0 0">${esc(BUNDLED_NOTE)}</p>` : ""}
     ${installSection}
+    ${gapHint}
     ${
       targetIndex(state.python, state.platform) < 0
         ? ""
@@ -886,7 +903,25 @@ function renderLookup(query, extra = null) {
   const documentData = extra ?? lookupDetails.get(q) ?? null;
   $("lookup").innerHTML = buildPackageCardHTML(p, bundledInfo(documentData), pinNote, documentData);
 
-  if (extra === null && !lookupDetails.has(q) && !pendingDetails.has(q) && !p.error && isPackageSpec(spec)) {
+  // One optional same-origin request, only when the selected release has an actual PyPI gap.
+  if (!gapWheelPromise && !pinNote && isPackageSpec(spec) && !p.error &&
+      p.results.some((status) => status === "source" || status === "missing")) {
+    gapWheelPromise = fetch("../wheels/data/gap-wheels.json")
+      .then((response) => (response.ok ? response.json() : null))
+      .catch(() => null)
+      .then((data) => {
+        gapWheelDoc = data;
+        // Re-render whatever the lookup shows now (the list covers every package), with its package details if
+        // they've arrived since (renderLookup reads them from lookupDetails), never this call's possibly stale `extra`.
+        const current = $("search").value.trim();
+        if (data && current && $("lookup").innerHTML) {
+          renderLookup(current);
+        }
+      })
+      .catch(() => {});
+  }
+
+  if (extra === null && !lookupDetails.has(q) && !p.error && isPackageSpec(spec)) {
     fetchLookupDetails(q)
       .then((doc) => {
         // Still this package, even if the box now holds another version of it: re-render what it says now.
