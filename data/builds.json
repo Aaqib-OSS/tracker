@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "updated": "2026-11-15",
+ "updated": "2026-11-17",
  "targets": {
   "3.14 win-arm64": {
    "runner": "windows-11-arm",
@@ -17,6 +17,14 @@
   "3.14 musl-aarch64": {
    "runner": "ubuntu-24.04-arm",
    "python": "3.14"
+  },
+  "3.15 linux-x86_64": {
+   "runner": "ubuntu-24.04",
+   "python": "3.15"
+  },
+  "3.15 win-amd64": {
+   "runner": "windows-2025",
+   "python": "3.15"
   }
  },
  "results": [
@@ -216,6 +224,153 @@
    ],
    "date": "2026-11-15",
    "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+  },
+  {
+   "schema": 1,
+   "name": "catboost",
+   "version": "1.2.10",
+   "target": "3.14 musl-aarch64",
+   "runner": "ubuntu-24.04-arm",
+   "python": "3.14.10",
+   "outcome": "failed",
+   "seconds": 22,
+   "wheel": null,
+   "extensions": null,
+   "import": null,
+   "gil": null,
+   "gil_module": null,
+   "reason": "compile error",
+   "excerpt": "_all_src/cmake/conan_provider.cmake', '--log-level=VERBOSE', '-DCMAKE_POSITION_INDEPENDENT_CODE=On', '-DCATBOOST_COMPONENTS=python-package', '-DHAVE_CUDA=no', '-DPython3_ROOT_DIR=/usr/local']' returned non-zero exit status 1. | note: This error originates from a subprocess, and is likely not a problem with pip. | ERROR: Failed building wheel for catboost | ERROR: Failed to build one or more wheels",
+   "toolchains": [
+    "gcc"
+   ],
+   "date": "2026-11-17",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44088454696"
+  },
+  {
+   "schema": 1,
+   "name": "catboost",
+   "version": "1.2.10",
+   "target": "3.14 win-arm64",
+   "runner": "windows-11-arm",
+   "python": "3.14.10",
+   "outcome": "failed",
+   "seconds": 100,
+   "wheel": null,
+   "extensions": null,
+   "import": null,
+   "gil": null,
+   "gil_module": null,
+   "reason": "compile error",
+   "excerpt": "RuntimeError: Microsoft Visual Studio 2022 installation not found | note: This error originates from a subprocess, and is likely not a problem with pip. | ERROR: Failed building wheel for catboost | ERROR: Failed to build one or more wheels",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-17",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44088454696"
+  },
+  {
+   "schema": 1,
+   "name": "catboost",
+   "version": "1.2.10",
+   "target": "3.14t linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.14.10t",
+   "outcome": "failed",
+   "seconds": 1620,
+   "wheel": null,
+   "extensions": null,
+   "import": null,
+   "gil": null,
+   "gil_module": null,
+   "reason": "needs OpenSSL",
+   "excerpt": "subprocess.CalledProcessError: Command '['ninja', '-C', '/tmp/pip-wheel-j57uiowb/catboost_57a8a09d7df3432bafd23006e9bfbc78/build/temp.linux-x86_64-cpython-314t', '-v', '_catboost']' returned non-zero exit status 1. | note: This error originates from a subprocess, and is likely not a problem with pip. | ERROR: Failed building wheel for catboost | ERROR: Failed to build one or more wheels",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-17",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44088454696"
+  },
+  {
+   "schema": 1,
+   "name": "catboost",
+   "version": "1.2.10",
+   "target": "3.14t win-arm64",
+   "runner": "windows-11-arm",
+   "python": "3.14.10t",
+   "outcome": "failed",
+   "seconds": 130,
+   "wheel": null,
+   "extensions": null,
+   "import": null,
+   "gil": null,
+   "gil_module": null,
+   "reason": "compile error",
+   "excerpt": "RuntimeError: Microsoft Visual Studio 2022 installation not found | note: This error originates from a subprocess, and is likely not a problem with pip. | ERROR: Failed building wheel for catboost | ERROR: Failed to build one or more wheels",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-17",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44088454696"
+  },
+  {
+   "schema": 1,
+   "name": "catboost",
+   "version": "1.2.10",
+   "target": "3.15 linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.15.2",
+   "outcome": "failed",
+   "seconds": 1361,
+   "wheel": null,
+   "extensions": null,
+   "import": null,
+   "gil": null,
+   "gil_module": null,
+   "reason": "needs OpenSSL",
+   "excerpt": "subprocess.CalledProcessError: Command 'yarn clean' returned non-zero exit status 127. | note: This error originates from a subprocess, and is likely not a problem with pip. | ERROR: Failed building wheel for catboost | ERROR: Failed to build one or more wheels",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-17",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44088454696"
+  },
+  {
+   "schema": 1,
+   "name": "catboost",
+   "version": "1.2.10",
+   "target": "3.15 win-amd64",
+   "runner": "windows-2025",
+   "python": "3.15.2",
+   "outcome": "failed",
+   "seconds": 106,
+   "wheel": null,
+   "extensions": null,
+   "import": null,
+   "gil": null,
+   "gil_module": null,
+   "reason": "compile error",
+   "excerpt": "RuntimeError: Microsoft Visual Studio 2022 installation not found | note: This error originates from a subprocess, and is likely not a problem with pip. | ERROR: Failed building wheel for catboost | ERROR: Failed to build one or more wheels",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-17",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44088454696"
   },
   {
    "schema": 1,
