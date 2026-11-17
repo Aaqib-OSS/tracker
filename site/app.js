@@ -76,6 +76,7 @@ const state = {
   history: [],
   pyodide: {},
   changes: [],
+  blockers: null,
   python: null,
   platform: "musl-aarch64",
   shown: PAGE,
@@ -816,6 +817,54 @@ function renderPulse() {
     .join("");
 }
 
+// Packages blocking the most other top-500 installs (#93), from data/blockers.json.
+function renderBlockers() {
+  const container = $("blockers-feed");
+  const badge = $("blockers-target-badge");
+  const note = $("blockers-note");
+  if (!container || !note) return;
+  const placeholder = (text) => `<li class="feed-placeholder" style="color:var(--text-muted);padding:14px">${esc(text)}</li>`;
+
+  // Whole-tree installs are only scanned for some Pythons, so fall back to the newest one checked on this platform.
+  const label = blockersLabel(state.blockers, state.python, state.platform);
+  if (badge) badge.textContent = label || state.platform;
+  if (!label) {
+    note.textContent = state.blockers
+      ? `Whole-tree installs aren't checked on ${state.platform}, so there's nothing to rank here.`
+      : "The blockers list isn't available right now.";
+    container.innerHTML = "";
+    return;
+  }
+  const { checked, blockers } = blockersForTarget(state.blockers, label);
+  const python = label.split(" ")[0];
+  note.textContent =
+    `The packages whose missing wheel stops the most other top-500 packages installing from wheels alone on ${label}, ` +
+    `of ${fmt(checked)} checked.` +
+    (python !== state.python ? ` Installs aren't checked for Python ${state.python} here, so this is Python ${python}.` : "");
+  if (!blockers.length) {
+    container.innerHTML = placeholder("No missing wheel here holds back another top-500 package.");
+    return;
+  }
+
+  const link = (name, cls) => `<a href="p/${esc(canonicalName(name))}/" class="${cls}">${esc(name)}</a>`;
+  container.innerHTML = blockers
+    .slice(0, 15)
+    .map((item) => {
+      const others = `${fmt(item.count)} other top-500 install${item.count === 1 ? "" : "s"}`;
+      const examples = item.examples.length ? `, e.g. ${item.examples.map((ex) => link(ex, "blocker-ex")).join(", ")}` : "";
+      return `<li>
+        <div class="pulse-content">
+          <div class="blocker-row">
+            <strong>${link(item.name, "pulse-pkg")}</strong>
+            <span class="blocker-count-badge" title="Blocks ${others}">${fmt(item.count)}</span>
+          </div>
+          <small class="pulse-meta">Blocks ${others}${examples}</small>
+        </div>
+      </li>`;
+    })
+    .join("");
+}
+
 function canonicalName(name) {
   return name.toLowerCase().replace(/[-_.]+/g, "-");
 }
@@ -1109,6 +1158,7 @@ function renderAll() {
   renderTrends();
   renderGaps();
   renderPulse();
+  renderBlockers();
   writeHash();
 }
 
@@ -1182,18 +1232,20 @@ function initTheme() {
 async function main() {
   initTheme();
 
-  const [data, hist, pyodide, agreement, changes] = await Promise.all([
+  const [data, hist, pyodide, agreement, changes, blockers] = await Promise.all([
     fetch("data/coverage.json").then((r) => r.json()),
     fetch("data/history.json").then((r) => (r.ok ? r.json() : [])).catch(() => []),
     fetch("data/pyodide.json").then((r) => (r.ok ? r.json() : null)).catch(() => null),
     fetch("data/agreement.json").then((r) => (r.ok ? r.json() : null)).catch(() => null),
     fetch("data/changes.json").then((r) => (r.ok ? r.json() : [])).catch(() => []),
+    fetch("data/blockers.json").then((r) => (r.ok ? r.json() : null)).catch(() => null),
   ]);
 
   state.data = data;
   state.pyodide = pyodideReleases(pyodide);
   state.history = Array.isArray(hist) ? hist.filter((h) => h && typeof h === "object") : [];
   state.changes = Array.isArray(changes) ? changes.filter((c) => c && typeof c === "object") : [];
+  state.blockers = blockers && typeof blockers === "object" ? blockers : null;
   state.python = pythons()[0];
 
   const pkg = readHash();
@@ -1224,6 +1276,7 @@ async function main() {
     populateOmniSelects();
     renderLeaderboard();
     renderGaps();
+    renderBlockers();
     renderOmniAnswer();
     renderLookup($("search").value); // its "Why?" command names the selected platform
     writeHash();
@@ -1251,6 +1304,7 @@ async function main() {
     state.currentPage = 1;
     renderLeaderboard();
     renderGaps();
+    renderBlockers();
     renderOmniAnswer();
     renderLookup($("search").value);
     writeHash();

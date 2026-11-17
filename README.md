@@ -45,6 +45,12 @@ In the repository, `data/campaigns/<id>.json` is a campaign's recorded starting 
 curl -fsS https://wheelgap.github.io/tracker/data/most-wanted.json
 ```
 
+`data/blockers.json` lists, for each target whose whole-tree installs were checked, up to 50 packages whose missing wheel (`source` or `missing`) stops the most *other* top-500 packages installing from wheels alone: `{"generated", "targets": {"3.14 win-arm64": {"checked": 498, "blockers": [{"name", "count", "examples": [...]}, ...]}, ...}}`. `count` is how many other top-500 trees it blocks, and `examples` are the three highest-ranked of them. A package's own tree doesn't count (that's its own missing wheel, which `most-wanted.json` ranks), a tree with the same blocker by two routes counts once, and only checked trees count (`not_checked` counts for nothing). It's built when the site is published, by [`scripts/build_blockers.py`](scripts/build_blockers.py):
+
+```sh
+curl -fsS https://wheelgap.github.io/tracker/data/blockers.json
+```
+
 `data/agreement.json` is the nightly cross-check against pip itself, written by [`scripts/check_pip.py`](scripts/check_pip.py). For the top 200 packages on `3.13 linux-x86_64`, `3.13 linux-aarch64`, `3.13 musl-aarch64` and `3.13 win-arm64`, pip is asked what it would install of the version the scan checked (`pip install --dry-run --ignore-installed --no-deps --only-binary=:all: NAME==VERSION`, with the target's Python, ABI and every platform tag wheelgap accepts for it), and its answer is compared with the scan's, `wheel` against everything else. pip's "no wheel" counts only if it fetched the package's page on PyPI without a retry or a failed fetch, so an outage is never read as an answer. Fields (`"schema": 1`):
 
 - `date`: the day of the check; `scan`: the scan's `generated` time; `wheelgap` and `pip`: the versions used;

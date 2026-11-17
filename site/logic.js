@@ -213,6 +213,53 @@ function pyodideFooter(releases, anyBundled = false) {
   );
 }
 
+// The data/blockers.json target to show for a Python and platform: that one when it's there, else the newest Python
+// with data on the platform (free-threaded first only when python is), else null. Whole-tree installs are only
+// scanned for some Pythons, and build_blockers.py writes only targets with checked trees.
+function blockersLabel(raw, python, platform) {
+  const targets = raw && typeof raw === "object" && raw.targets && typeof raw.targets === "object" ? raw.targets : {};
+  const exact = `${python} ${platform}`;
+  if (Object.hasOwn(targets, exact)) return exact;
+  const freeThreaded = typeof python === "string" && python.endsWith("t");
+  const version = (py) => py.replace(/t$/, "").split(".").map(Number);
+  const found = Object.keys(targets)
+    .map((label) => label.split(" "))
+    .filter((parts) => parts.length === 2 && parts[1] === platform && /^[0-9]+\.[0-9]+t?$/.test(parts[0]))
+    .map(([py]) => py)
+    .sort((a, b) => {
+      if (a.endsWith("t") !== b.endsWith("t")) return a.endsWith("t") === freeThreaded ? -1 : 1;
+      const [am, an] = version(a), [bm, bn] = version(b);
+      return bm - am || bn - an;
+    });
+  return found.length ? `${found[0]} ${platform}` : null;
+}
+
+// Validated blockers for one target from data/blockers.json.
+// Returns { checked: number, blockers: [{ name, count, examples }] }.
+function blockersForTarget(raw, targetLabel) {
+  if (!raw || typeof raw !== "object" || !raw.targets || typeof raw.targets !== "object" || typeof targetLabel !== "string") {
+    return { checked: 0, blockers: [] };
+  }
+  const entry = raw.targets[targetLabel];
+  if (!entry || typeof entry !== "object") return { checked: 0, blockers: [] };
+  const checked = Number.isInteger(entry.checked) && entry.checked >= 0 ? entry.checked : 0;
+  const blockers = [];
+  if (Array.isArray(entry.blockers)) {
+    for (const b of entry.blockers) {
+      if (!b || typeof b !== "object" || !isPackageName(b.name) || !Number.isInteger(b.count) || b.count <= 0) continue;
+      const examples = Array.isArray(b.examples)
+        ? b.examples.filter((name) => isPackageName(name)).slice(0, 3)
+        : [];
+      blockers.push({
+        name: b.name,
+        count: b.count,
+        examples,
+      });
+    }
+  }
+  return { checked, blockers };
+}
+
 // What a build lab result (data/builds.json, see scripts/build_lab.py) means for someone without a wheel:
 // {kind, text}. kind: "works" (built, imported, and on free-threaded Python the GIL stayed off), "gil" (works only
 // with the GIL back on), "pure" (a pure-Python wheel: no compiled part, or an optional one skipped), "partial" (a
@@ -239,7 +286,7 @@ function labVerdict(r) {
 
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
-    BUNDLED_NOTE, isPackageName, isPackageSpec, splitSpec, installable, gapsAt, platformStats, chartSeries, pyodideReleases, bundledInfo, bundledDetail, lookupInstallData, gapWheelTargets, whyCommand, pyodideFooter,
+    BUNDLED_NOTE, isPackageName, isPackageSpec, splitSpec, installable, gapsAt, platformStats, chartSeries, pyodideReleases, bundledInfo, bundledDetail, lookupInstallData, gapWheelTargets, blockersLabel, blockersForTarget, whyCommand, pyodideFooter,
     labVerdict,
   };
 }
