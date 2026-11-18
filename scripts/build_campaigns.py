@@ -39,9 +39,11 @@ import tomllib
 from pathlib import Path
 
 if __package__:  # imported as scripts.build_campaigns (the tests)
-    from . import check_notes
+    from . import check_notes, update_changes, update_history
 else:  # run as python scripts/build_campaigns.py
     import check_notes
+    import update_changes
+    import update_history
 
 SCAN_SCHEMA = 1
 BASELINE_SCHEMA = 1
@@ -1004,10 +1006,13 @@ def record_baselines(
     """Write out/<id>.json for each campaign without one; return the ids written.
 
     A campaign that hasn't started yet, or whose top N had a failed lookup in this scan, is skipped
-    and tried again the next night, so a baseline is never frozen from an imperfect scan.
+    and tried again the next night, so a baseline is never frozen from an imperfect scan. For the
+    same reason a changes.json that isn't fully usable raises update_changes.Malformed (the step warns and the next
+    scan tries again) rather than freezing a list without the gains it couldn't read. It's only read
+    when a baseline is due, so a bad one doesn't fail the nights with nothing to record.
     """
     scan = load_scan(coverage_path)
-    changes = json.loads(changes_path.read_text(encoding="utf-8")) if changes_path.exists() else []
+    changes = None
     campaigns = load_campaigns(config_path)
     newest = newest_non_free_threaded(scan["targets"])
     written = []
@@ -1020,6 +1025,8 @@ def record_baselines(
         if reason:
             log(f"campaigns: not recording {campaign['id']} yet: {reason}")
             continue
+        if changes is None:
+            changes = update_changes.read_changes(changes_path, strict=True)
         baseline = baseline_for(campaign, scan, changes, python)
         out.mkdir(parents=True, exist_ok=True)
         path.write_text(dump_baseline(baseline), encoding="utf-8")
@@ -1041,8 +1048,8 @@ def build(
     notes = check_notes.load(notes_dir, scan) if notes_dir is not None else {}
     if baselines is None:
         baselines = coverage_path.parent / "campaigns"
-    history = json.loads(history_path.read_text(encoding="utf-8")) if history_path.exists() else []
-    changes = json.loads(changes_path.read_text(encoding="utf-8")) if changes_path.exists() else []
+    history = update_history.read_history(history_path)
+    changes = update_changes.read_changes(changes_path)
     campaigns = load_campaigns(config_path)
     newest = newest_non_free_threaded(scan["targets"])
     urls: list[str] = [f"{BASE_URL}campaigns/"]
@@ -1072,7 +1079,10 @@ def build(
 if __name__ == "__main__":
     if sys.argv[1:2] == ["--record-baselines"]:
         coverage, changes, config, out = (Path(p) for p in sys.argv[2:6])
-        written = record_baselines(coverage, changes, config, out)
+        try:
+            written = record_baselines(coverage, changes, config, out)
+        except update_changes.Malformed as e:
+            sys.exit(f"campaigns: not recording baselines: {e}")
         print(f"campaigns: recorded {', '.join(written) if written else 'no new'} baseline(s) in {out}")
     else:
         coverage, history, changes, config, site = (Path(p) for p in sys.argv[1:6])
