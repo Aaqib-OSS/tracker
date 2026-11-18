@@ -218,7 +218,7 @@ async function loadPage(hash, packageData = null, gapWheelIndex = null, setup = 
     return elements.get(id);
   };
   const context = {
-    console, URLSearchParams, setTimeout, location,
+    console, URLSearchParams, setTimeout, clearTimeout, location,
     history: { replaceState(_state, _title, url) { location.hash = url; } },
     navigator: {},
     localStorage: { getItem() { return null; }, setItem() {} },
@@ -1081,4 +1081,261 @@ test("clicking a Python (or Enter/Space on it) re-renders for it and keeps focus
   assert.equal(checkedPython(tabs.innerHTML), list[2]);
   assert.equal(context.document.activeElement.python, list[2]);
   assert.match(context.location.hash, new RegExp(`python=${list[2].replace(".", "\\.")}`));
+});
+
+// Both package searches are WAI-ARIA comboboxes (#167). The stub DOM here records attributes and classes, so the
+// tests can follow aria-expanded, aria-activedescendant and each option's aria-selected.
+async function loadComboboxPage() {
+  return loadPage("", null, null, (context) => {
+    context.document.handlers = {};
+    context.document.addEventListener = (type, fn) => { (context.document.handlers[type] ??= []).push(fn); };
+    const byId = context.document.getElementById;
+    context.document.getElementById = (id) => {
+      const node = byId(id);
+      if (!node.attrs) {
+        node.focus = () => { context.document.activeElement = node; };
+        node.attrs = {};
+        node.classes = new Set();
+        node.setAttribute = (k, v) => { node.attrs[k] = String(v); };
+        node.getAttribute = (k) => node.attrs[k] ?? null;
+        node.removeAttribute = (k) => { delete node.attrs[k]; };
+        node.classList = {
+          add: (c) => node.classes.add(c), remove: (c) => node.classes.delete(c),
+          toggle: (c, on) => (on ?? !node.classes.has(c)) ? node.classes.add(c) : node.classes.delete(c),
+          contains: (c) => node.classes.has(c),
+        };
+      }
+      return node;
+    };
+  });
+}
+const optionIds = (html) => [...html.matchAll(/id="([a-z]+-opt-\d+)"[^>]*role="option"/g)].map((m) => m[1]);
+const optionNames = (html, attr) => [...html.matchAll(new RegExp(`${attr}="([^"]+)"`, "g"))].map((m) => m[1]);
+const selectedOptions = (get, ids) => ids.filter((id) => get(id).attrs?.["aria-selected"] === "true");
+const typeInto = (get, id, value) => { get(id).value = value; get(id).handlers.input({ target: get(id) }); };
+const keyOn = (get, id, key) => {
+  let prevented = false;
+  get(id).handlers.keydown({ key, target: get(id), preventDefault() { prevented = true; } });
+  return prevented;
+};
+const settle = () => new Promise((r) => setTimeout(r, 600)); // past the live region's pause
+
+test("both search inputs and lists carry the combobox roles (#167)", () => {
+  const html = fs.readFileSync(path.join(ROOT, "site", "index.html"), "utf8");
+  assert.match(html, /<input id="search"[^>]* role="combobox" aria-autocomplete="list" aria-controls="search-autocomplete" aria-expanded="false">/);
+  assert.match(html, /id="search-autocomplete" role="listbox" aria-label="[^"]+"/);
+  assert.match(html, /<input class="cmd-input" id="cmd-input"[^>]* role="combobox" aria-label="[^"]+" aria-autocomplete="list" aria-controls="cmd-results" aria-expanded="false">/);
+  assert.match(html, /id="cmd-results" role="listbox" aria-label="[^"]+"/);
+  for (const id of ["search-status", "cmd-status"]) assert.match(html, new RegExp(`class="visually-hidden" id="${id}" role="status" aria-live="polite"`));
+  // The quick search's region sits inside the modal dialog, where a screen reader still hears it.
+  const at = (needle) => html.indexOf(needle);
+  assert.ok(at('id="cmd-overlay"') < at('id="cmd-status"') && at('id="cmd-status"') < at('class="cmd-footer"'), "cmd-status is inside the dialog");
+});
+
+test("lookup: Down and Up move aria-activedescendant while focus stays in the input, Enter picks it (#167)", async () => {
+  const { get, context } = await loadComboboxPage();
+  get("search").focus();
+  typeInto(get, "search", "num");
+  const menu = get("search-autocomplete");
+  assert.equal(menu.hidden, false);
+  assert.equal(get("search").attrs["aria-expanded"], "true");
+  const ids = optionIds(menu.innerHTML);
+  assert.ok(ids.length >= 2, "several suggestions");
+  assert.deepEqual(ids, ids.map((_, k) => `search-opt-${k}`), "ids come from the index");
+  assert.doesNotMatch(menu.innerHTML, /role="button"|tabindex/);
+  assert.doesNotMatch(menu.innerHTML, /aria-selected="true"/, "no option is rendered selected");
+  assert.equal(get("search").attrs["aria-activedescendant"], undefined, "nothing is highlighted until Up or Down");
+  assert.ok(keyOn(get, "search", "ArrowDown"));
+  assert.equal(get("search").attrs["aria-activedescendant"], "search-opt-0");
+  assert.deepEqual(selectedOptions(get, ids), ["search-opt-0"]);
+  keyOn(get, "search", "ArrowDown");
+  assert.equal(get("search").attrs["aria-activedescendant"], "search-opt-1");
+  assert.deepEqual(selectedOptions(get, ids), ["search-opt-1"]);
+  assert.ok(get("search-opt-1").classes.has("selected") && !get("search-opt-0").classes.has("selected"), "the look follows");
+  keyOn(get, "search", "ArrowUp");
+  keyOn(get, "search", "ArrowUp"); // from the first, wraps to the last
+  assert.equal(get("search").attrs["aria-activedescendant"], ids.at(-1));
+  keyOn(get, "search", "ArrowDown"); // and back round to the first
+  keyOn(get, "search", "ArrowDown");
+  assert.equal(context.document.activeElement, get("search"), "focus never left the input");
+  const names = optionNames(menu.innerHTML, "data-name");
+  assert.ok(keyOn(get, "search", "Enter"), "Enter on a highlighted option is the option's, not the form's");
+  assert.equal(get("search").value, names[1]);
+  assert.equal(menu.hidden, true);
+  assert.equal(get("search").attrs["aria-expanded"], "false");
+  assert.equal(get("search").attrs["aria-activedescendant"], undefined);
+  assert.match(context.location.hash, new RegExp(`package=${names[1]}`));
+});
+
+test("lookup: Enter with nothing highlighted submits the form as before (#167)", async () => {
+  const { get } = await loadComboboxPage();
+  typeInto(get, "search", "num");
+  assert.equal(keyOn(get, "search", "Enter"), false, "the form's submit handles it");
+  assert.equal(get("search").value, "num");
+});
+
+test("lookup: Escape closes the list and sets aria-expanded to false (#167)", async () => {
+  const { get } = await loadComboboxPage();
+  typeInto(get, "search", "num");
+  keyOn(get, "search", "ArrowDown");
+  keyOn(get, "search", "Escape");
+  assert.equal(get("search-autocomplete").hidden, true);
+  assert.equal(get("search").attrs["aria-expanded"], "false");
+  assert.equal(get("search").attrs["aria-activedescendant"], undefined);
+  assert.equal(get("search").value, "num", "Escape keeps what was typed");
+  // Down reopens it.
+  keyOn(get, "search", "ArrowDown");
+  assert.equal(get("search-autocomplete").hidden, false);
+  assert.equal(get("search").attrs["aria-activedescendant"], "search-opt-0");
+});
+
+test("quick search: Down moves aria-activedescendant and aria-selected, Enter opens the highlighted package (#167)", async () => {
+  const { get } = await loadComboboxPage();
+  get("cmd-trigger").handlers.click();
+  assert.equal(get("cmd-input").attrs["aria-expanded"], "true");
+  assert.equal(get("cmd-input").attrs["aria-activedescendant"], "cmd-opt-0", "the first result starts highlighted, as before");
+  typeInto(get, "cmd-input", "num");
+  const ids = optionIds(get("cmd-results").innerHTML);
+  assert.ok(ids.length >= 2);
+  assert.match(get("cmd-results").innerHTML, /id="cmd-opt-0" data-pkg="[^"]+" role="option" aria-selected="true"/);
+  assert.equal((get("cmd-results").innerHTML.match(/aria-selected="true"/g) ?? []).length, 1);
+  keyOn(get, "cmd-input", "ArrowDown");
+  assert.equal(get("cmd-input").attrs["aria-activedescendant"], "cmd-opt-1");
+  assert.deepEqual(selectedOptions(get, ids), ["cmd-opt-1"]);
+  keyOn(get, "cmd-input", "ArrowUp");
+  keyOn(get, "cmd-input", "ArrowUp");
+  assert.equal(get("cmd-input").attrs["aria-activedescendant"], ids.at(-1));
+  const names = optionNames(get("cmd-results").innerHTML, "data-pkg");
+  keyOn(get, "cmd-input", "Enter");
+  assert.equal(get("cmd-overlay").hidden, true);
+  assert.equal(get("drawer-title").textContent, names.at(-1));
+  typeInto(get, "cmd-input", "no-such-package-zzz");
+  assert.equal(get("cmd-input").attrs["aria-expanded"], "false");
+  assert.equal(get("cmd-input").attrs["aria-activedescendant"], undefined);
+});
+
+test("the live regions give the count once typing pauses, and say when nothing matches (#167)", async () => {
+  const { get } = await loadComboboxPage();
+  const said = [];
+  Object.defineProperty(get("search-status"), "textContent", { get: () => said.at(-1) ?? "", set: (v) => said.push(v) });
+  for (const v of ["n", "nu", "num"]) typeInto(get, "search", v);
+  assert.equal(get("search-status").textContent, "", "nothing is announced while typing");
+  await settle();
+  const count = optionIds(get("search-autocomplete").innerHTML).length;
+  assert.deepEqual(said, ["", `${count} suggestions. Use Up and Down to choose.`], "one announcement, for what was typed last, after clearing the region");
+  typeInto(get, "search", "no-such-package-zzz");
+  await settle();
+  assert.equal(get("search-status").textContent, "No packages match.");
+  assert.equal(get("search-autocomplete").hidden, true);
+
+  get("cmd-trigger").handlers.click();
+  typeInto(get, "cmd-input", "no-such-package-zzz");
+  await settle();
+  assert.equal(get("cmd-status").textContent, "No packages match.");
+  typeInto(get, "cmd-input", "num");
+  await settle();
+  assert.match(get("cmd-status").textContent, /^\d+ suggestions?\. Use Up and Down to choose\.$/);
+});
+
+test("lookup: the global Escape and a click outside also reset the combobox state (#167)", async () => {
+  const { get, context } = await loadComboboxPage();
+  for (const id of ["cmd-overlay", "drawer", "export-backdrop"]) get(id).hidden = true; // only the lookup is open
+  for (const close of ["Escape", "click outside"]) {
+    typeInto(get, "search", "num");
+    keyOn(get, "search", "ArrowDown");
+    assert.equal(get("search").attrs["aria-activedescendant"], "search-opt-0");
+    // The page's global Escape handler, and its click-outside handler (the last document click listener).
+    if (close === "Escape") context.document.handlers.keydown.at(-1)({ key: "Escape", preventDefault() {} });
+    else context.document.handlers.click.at(-1)({ target: { closest: () => null } });
+    assert.equal(get("search-autocomplete").hidden, true, close);
+    assert.equal(get("search").attrs["aria-expanded"], "false", close);
+    assert.equal(get("search").attrs["aria-activedescendant"], undefined, close);
+  }
+});
+
+test("lookup: no count is announced once the list has closed within the pause (#167)", async () => {
+  const { get } = await loadComboboxPage();
+  const said = [];
+  Object.defineProperty(get("search-status"), "textContent", { get: () => said.at(-1) ?? "", set: (v) => said.push(v) });
+  typeInto(get, "search", "num");
+  keyOn(get, "search", "ArrowDown");
+  keyOn(get, "search", "Enter"); // picks a suggestion and closes the list before the pause ends
+  await settle();
+  assert.deepEqual(said, [], "the count would talk over the lookup result");
+});
+
+test("lookup: a pending \"No packages match.\" is dropped once the field is cleared or submitted (#167)", async () => {
+  const { get } = await loadComboboxPage();
+  const said = [];
+  Object.defineProperty(get("search-status"), "textContent", { get: () => said.at(-1) ?? "", set: (v) => said.push(v) });
+  typeInto(get, "search", "no-such-package-zzz");
+  typeInto(get, "search", ""); // backspaced to empty within the pause
+  await settle();
+  typeInto(get, "search", "no-such-package-zzz");
+  get("search-form").handlers.submit({ preventDefault() {} }); // Enter within the pause
+  await settle();
+  assert.deepEqual(said, [], "it would talk over an empty field or the lookup result");
+});
+
+test("the same count twice is announced again: the region is cleared before each write", async () => {
+  const { get } = await loadComboboxPage();
+  const said = [];
+  Object.defineProperty(get("search-status"), "textContent", { get: () => said.at(-1) ?? "", set: (v) => said.push(v) });
+  typeInto(get, "search", "n");
+  await settle();
+  typeInto(get, "search", "nu");
+  await settle();
+  const text = said.at(-1);
+  assert.match(text, /^8 suggestions\./, "both short queries hit the cap");
+  assert.deepEqual(said, ["", text, "", text]);
+});
+
+test("lookup: clicking a suggestion picks it and closes the list", async () => {
+  const { get, context } = await loadComboboxPage();
+  typeInto(get, "search", "num");
+  const names = optionNames(get("search-autocomplete").innerHTML, "data-name");
+  get("search-autocomplete").handlers.click({ target: { closest: (sel) => (sel === ".autocomplete-item" ? { dataset: { name: names[2] } } : null) } });
+  assert.equal(get("search").value, names[2]);
+  assert.equal(get("search-autocomplete").hidden, true);
+  assert.equal(get("search").attrs["aria-expanded"], "false");
+  assert.equal(get("search").attrs["aria-activedescendant"], undefined);
+  assert.match(context.location.hash, new RegExp(`package=${names[2]}`));
+  // A click outside an option does nothing.
+  get("search-autocomplete").handlers.click({ target: { closest: () => null } });
+  assert.equal(get("search").value, names[2]);
+});
+
+test("modified arrows stay the input's, Tab closes the lookup list, and a press on the list keeps focus (#167)", async () => {
+  const { get } = await loadComboboxPage();
+  const press = (id, key, mods = {}) => {
+    let prevented = false;
+    get(id).handlers.keydown({ key, target: get(id), ...mods, preventDefault() { prevented = true; } });
+    return prevented;
+  };
+  const MODS = ["shiftKey", "altKey", "ctrlKey", "metaKey"];
+  typeInto(get, "search", "num");
+  for (const mod of MODS) {
+    for (const key of ["ArrowDown", "ArrowUp"]) {
+      assert.equal(press("search", key, { [mod]: true }), false, `${mod}+${key} is left to the input (Shift extends the selection)`);
+      assert.equal(get("search").attrs["aria-activedescendant"], undefined, `${mod}+${key} highlights nothing`);
+    }
+  }
+  keyOn(get, "search", "ArrowDown");
+  assert.equal(get("search").attrs["aria-activedescendant"], "search-opt-0");
+  assert.equal(press("search", "Tab"), false, "Tab still moves focus on");
+  assert.equal(get("search-autocomplete").hidden, true, "the list doesn't stay open behind it");
+  assert.equal(get("search").attrs["aria-expanded"], "false");
+  assert.equal(get("search").attrs["aria-activedescendant"], undefined);
+  let kept = false;
+  get("search-autocomplete").handlers.mousedown({ preventDefault() { kept = true; } });
+  assert.ok(kept, "pressing an option doesn't take focus off the input");
+
+  get("cmd-trigger").handlers.click();
+  typeInto(get, "cmd-input", "num");
+  for (const mod of MODS) {
+    assert.equal(press("cmd-input", "ArrowDown", { [mod]: true }), false, `${mod}+ArrowDown is left to the input`);
+    assert.equal(get("cmd-input").attrs["aria-activedescendant"], "cmd-opt-0", `${mod}+ArrowDown moves nothing`);
+  }
+  keyOn(get, "cmd-input", "ArrowDown");
+  assert.equal(get("cmd-input").attrs["aria-activedescendant"], "cmd-opt-1");
 });
