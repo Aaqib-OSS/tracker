@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "updated": "2026-11-17",
+ "updated": "2026-11-20",
  "targets": {
   "3.14 win-arm64": {
    "runner": "windows-11-arm",
@@ -78,7 +78,7 @@
   {
    "schema": 1,
    "name": "amazon-ion",
-   "version": "0.15.0",
+   "version": "0.16.0",
    "target": "3.14t linux-x86_64",
    "runner": "ubuntu-24.04",
    "python": "3.14.10t",
@@ -97,13 +97,13 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43750127182"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
    "name": "amazon-ion",
-   "version": "0.15.0",
+   "version": "0.16.0",
    "target": "3.14t win-arm64",
    "runner": "windows-11-arm",
    "python": "3.14.10t",
@@ -122,8 +122,58 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43750127182"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "amazon-ion",
+   "version": "0.16.0",
+   "target": "3.15 linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 31,
+   "wheel": "cp315-cp315-linux_x86_64",
+   "extensions": 0,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "amazon-ion",
+   "version": "0.16.0",
+   "target": "3.15 win-amd64",
+   "runner": "windows-2025",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 55,
+   "wheel": "cp315-cp315-win_amd64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -540,6 +590,131 @@
   },
   {
    "schema": 1,
+   "name": "clickhouse-driver",
+   "version": "0.2.11",
+   "target": "3.14 win-arm64",
+   "runner": "windows-11-arm",
+   "python": "3.14.10",
+   "outcome": "built",
+   "seconds": 23,
+   "wheel": "cp314-cp314-win_arm64",
+   "extensions": 4,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "clickhouse-driver",
+   "version": "0.2.11",
+   "target": "3.14t linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.14.10t",
+   "outcome": "built",
+   "seconds": 12,
+   "wheel": "cp314-cp314t-linux_x86_64",
+   "extensions": 4,
+   "import": "ok",
+   "gil": "re-enabled",
+   "gil_module": "clickhouse_driver.varint",
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "clickhouse-driver",
+   "version": "0.2.11",
+   "target": "3.14t win-arm64",
+   "runner": "windows-11-arm",
+   "python": "3.14.10t",
+   "outcome": "built",
+   "seconds": 18,
+   "wheel": "cp314-cp314t-win_arm64",
+   "extensions": 4,
+   "import": "ok",
+   "gil": "re-enabled",
+   "gil_module": "clickhouse_driver.varint",
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "clickhouse-driver",
+   "version": "0.2.11",
+   "target": "3.15 linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 14,
+   "wheel": "cp315-cp315-linux_x86_64",
+   "extensions": 4,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "clickhouse-driver",
+   "version": "0.2.11",
+   "target": "3.15 win-amd64",
+   "runner": "windows-2025",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 24,
+   "wheel": "cp315-cp315-win_amd64",
+   "extensions": 4,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
    "name": "confluent-kafka",
    "version": "2.16.1",
    "target": "3.14 musl-aarch64",
@@ -738,52 +913,77 @@
   {
    "schema": 1,
    "name": "ddtrace",
-   "version": "4.17.0",
+   "version": "4.17.2",
    "target": "3.14t linux-x86_64",
    "runner": "ubuntu-24.04",
    "python": "3.14.10t",
    "outcome": "failed",
-   "seconds": 343,
+   "seconds": 357,
    "wheel": null,
    "extensions": null,
    "import": null,
    "gil": null,
    "gil_module": null,
    "reason": "compile error",
-   "excerpt": "subprocess.CalledProcessError: Command '[PosixPath('/tmp/pip-build-env-4ezqfkfd/overlay/lib/python3.14t/site-packages/cmake/data/bin/cmake'), '--build', '.', '--config RelWithDebInfo']' returned non-zero exit status 2. | note: This error originates from a subprocess, and is likely not a problem with pip. | ERROR: Failed building wheel for ddtrace | ERROR: Failed to build one or more wheels",
+   "excerpt": "subprocess.CalledProcessError: Command '[PosixPath('/tmp/pip-build-env-c2qf5e3n/overlay/lib/python3.14t/site-packages/cmake/data/bin/cmake'), '--build', '.', '--config RelWithDebInfo']' returned non-zero exit status 2. | note: This error originates from a subprocess, and is likely not a problem with pip. | ERROR: Failed building wheel for ddtrace | ERROR: Failed to build one or more wheels",
    "toolchains": [
     "rustc",
     "cargo",
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
    "name": "ddtrace",
-   "version": "4.17.0",
+   "version": "4.17.2",
    "target": "3.14t win-arm64",
    "runner": "windows-11-arm",
    "python": "3.14.10t",
-   "outcome": "failed",
-   "seconds": 27,
-   "wheel": null,
-   "extensions": null,
-   "import": null,
-   "gil": null,
-   "gil_module": null,
-   "reason": "compile error",
-   "excerpt": "error: subprocess-exited-with-error | Getting requirements to build wheel did not run successfully. | note: This error originates from a subprocess, and is likely not a problem with pip. | ERROR: Failed to build 'ddtrace' when getting requirements to build wheel",
+   "outcome": "built",
+   "seconds": 327,
+   "wheel": "cp314-cp314t-win_arm64",
+   "extensions": 10,
+   "import": "ok",
+   "gil": "re-enabled",
+   "gil_module": "ddtrace.internal._encoding",
+   "reason": null,
+   "excerpt": "",
    "toolchains": [
     "rustc",
     "cargo",
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "ddtrace",
+   "version": "4.17.2",
+   "target": "3.15 win-amd64",
+   "runner": "windows-2025",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 372,
+   "wheel": "cp315-cp315-win_amd64",
+   "extensions": 10,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -981,13 +1181,135 @@
   },
   {
    "schema": 1,
+   "name": "fastparquet",
+   "version": "2026.9.0",
+   "target": "3.14 musl-aarch64",
+   "runner": "ubuntu-24.04-arm",
+   "python": "3.14.10",
+   "outcome": "failed",
+   "seconds": 5,
+   "wheel": null,
+   "extensions": null,
+   "import": null,
+   "gil": null,
+   "gil_module": null,
+   "reason": "compile error",
+   "excerpt": "? Getting requirements to build wheel did not run successfully. | FileNotFoundError: [Errno 2] No such file or directory: 'git' | note: This error originates from a subprocess, and is likely not a problem with pip. | ERROR: Failed to build 'fastparquet' when getting requirements to build wheel",
+   "toolchains": [
+    "gcc"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "fastparquet",
+   "version": "2026.9.0",
+   "target": "3.14 win-arm64",
+   "runner": "windows-11-arm",
+   "python": "3.14.10",
+   "outcome": "built",
+   "seconds": 49,
+   "wheel": "cp314-cp314-win_arm64",
+   "extensions": 2,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "fastparquet",
+   "version": "2026.9.0",
+   "target": "3.14t win-arm64",
+   "runner": "windows-11-arm",
+   "python": "3.14.10t",
+   "outcome": "built",
+   "seconds": 35,
+   "wheel": "cp314-cp314t-win_arm64",
+   "extensions": 2,
+   "import": "ok",
+   "gil": "re-enabled",
+   "gil_module": "fastparquet.cencoding",
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "fastparquet",
+   "version": "2026.9.0",
+   "target": "3.15 linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 27,
+   "wheel": "cp315-cp315-linux_x86_64",
+   "extensions": 2,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "fastparquet",
+   "version": "2026.9.0",
+   "target": "3.15 win-amd64",
+   "runner": "windows-2025",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 37,
+   "wheel": "cp315-cp315-win_amd64",
+   "extensions": 2,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
    "name": "fastuuid",
    "version": "0.14.0",
    "target": "3.14 win-arm64",
    "runner": "windows-11-arm",
    "python": "3.14.10",
    "outcome": "built",
-   "seconds": 62,
+   "seconds": 54,
    "wheel": "cp314-cp314-win_arm64",
    "extensions": 1,
    "import": "ok",
@@ -1001,8 +1323,8 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -1012,7 +1334,7 @@
    "runner": "ubuntu-24.04",
    "python": "3.14.10t",
    "outcome": "built",
-   "seconds": 26,
+   "seconds": 28,
    "wheel": "cp314-cp314t-linux_x86_64",
    "extensions": 1,
    "import": "ok",
@@ -1026,8 +1348,8 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -1037,7 +1359,7 @@
    "runner": "windows-11-arm",
    "python": "3.14.10t",
    "outcome": "built",
-   "seconds": 53,
+   "seconds": 68,
    "wheel": "cp314-cp314t-win_arm64",
    "extensions": 1,
    "import": "ok",
@@ -1051,8 +1373,58 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "fastuuid",
+   "version": "0.14.0",
+   "target": "3.15 linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.15.2",
+   "outcome": "failed",
+   "seconds": 16,
+   "wheel": null,
+   "extensions": null,
+   "import": null,
+   "gil": null,
+   "gil_module": null,
+   "reason": "compile error",
+   "excerpt": "Error: command ['maturin', 'pep517', 'build-wheel', '-i', '/opt/hostedtoolcache/Python/3.15.2/x64/bin/python', '--compatibility', 'off'] returned non-zero exit status 1 | note: This error originates from a subprocess, and is likely not a problem with pip. | ERROR: Failed building wheel for fastuuid | ERROR: Failed to build one or more wheels",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "fastuuid",
+   "version": "0.14.0",
+   "target": "3.15 win-amd64",
+   "runner": "windows-2025",
+   "python": "3.15.2",
+   "outcome": "failed",
+   "seconds": 35,
+   "wheel": null,
+   "extensions": null,
+   "import": null,
+   "gil": null,
+   "gil_module": null,
+   "reason": "compile error",
+   "excerpt": "Error: command ['maturin', 'pep517', 'build-wheel', '-i', 'C:\\\\hostedtoolcache\\\\windows\\\\Python\\\\3.15.2\\\\x64\\\\python.exe', '--compatibility', 'off'] returned non-zero exit status 1 | note: This error originates from a subprocess, and is likely not a problem with pip. | ERROR: Failed building wheel for fastuuid | ERROR: Failed to build one or more wheels",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -1220,8 +1592,8 @@
    "toolchains": [
     "gcc"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -1231,7 +1603,7 @@
    "runner": "ubuntu-24.04",
    "python": "3.14.10t",
    "outcome": "failed",
-   "seconds": 4,
+   "seconds": 7,
    "wheel": null,
    "extensions": null,
    "import": null,
@@ -1245,8 +1617,8 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -1255,6 +1627,31 @@
    "target": "3.14t win-arm64",
    "runner": "windows-11-arm",
    "python": "3.14.10t",
+   "outcome": "failed",
+   "seconds": 10,
+   "wheel": null,
+   "extensions": null,
+   "import": null,
+   "gil": null,
+   "gil_module": null,
+   "reason": "compile error",
+   "excerpt": "error: command 'bazel' failed with exit code 2 | note: This error originates from a subprocess, and is likely not a problem with pip. | ERROR: Failed building wheel for google-re2 | ERROR: Failed to build one or more wheels",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "google-re2",
+   "version": "1.1.20251105",
+   "target": "3.15 linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.15.2",
    "outcome": "failed",
    "seconds": 9,
    "wheel": null,
@@ -1270,8 +1667,33 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "google-re2",
+   "version": "1.1.20251105",
+   "target": "3.15 win-amd64",
+   "runner": "windows-2025",
+   "python": "3.15.2",
+   "outcome": "failed",
+   "seconds": 8,
+   "wheel": null,
+   "extensions": null,
+   "import": null,
+   "gil": null,
+   "gil_module": null,
+   "reason": "compile error",
+   "excerpt": "error: command 'bazel' failed with exit code 2 | note: This error originates from a subprocess, and is likely not a problem with pip. | ERROR: Failed building wheel for google-re2 | ERROR: Failed to build one or more wheels",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -1497,6 +1919,56 @@
   },
   {
    "schema": 1,
+   "name": "h5py",
+   "version": "3.16.0",
+   "target": "3.15 linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.15.2",
+   "outcome": "failed",
+   "seconds": 7,
+   "wheel": null,
+   "extensions": null,
+   "import": null,
+   "gil": null,
+   "gil_module": null,
+   "reason": "compile error",
+   "excerpt": "error: libhdf5.so: cannot open shared object file: No such file or directory | note: This error originates from a subprocess, and is likely not a problem with pip. | ERROR: Failed building wheel for h5py | ERROR: Failed to build one or more wheels",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "h5py",
+   "version": "3.16.0",
+   "target": "3.15 win-amd64",
+   "runner": "windows-2025",
+   "python": "3.15.2",
+   "outcome": "failed",
+   "seconds": 12,
+   "wheel": null,
+   "extensions": null,
+   "import": null,
+   "gil": null,
+   "gil_module": null,
+   "reason": "compile error",
+   "excerpt": "error: Could not find module 'hdf5.dll' (or one of its dependencies). Try using the full path with constructor syntax. | note: This error originates from a subprocess, and is likely not a problem with pip. | ERROR: Failed building wheel for h5py | ERROR: Failed to build one or more wheels",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
    "name": "hypothesis",
    "version": "6.170.15",
    "target": "3.14t win-arm64",
@@ -1541,6 +2013,128 @@
    ],
    "date": "2026-11-15",
    "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+  },
+  {
+   "schema": 1,
+   "name": "jpype1",
+   "version": "1.7.1",
+   "target": "3.14 musl-aarch64",
+   "runner": "ubuntu-24.04-arm",
+   "python": "3.14.10",
+   "outcome": "failed",
+   "seconds": 7,
+   "wheel": null,
+   "extensions": null,
+   "import": null,
+   "gil": null,
+   "gil_module": null,
+   "reason": "compile error",
+   "excerpt": "*** CMake configuration failed | note: This error originates from a subprocess, and is likely not a problem with pip. | ERROR: Failed building wheel for jpype1 | ERROR: Failed to build one or more wheels",
+   "toolchains": [
+    "gcc"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "jpype1",
+   "version": "1.7.1",
+   "target": "3.14 win-arm64",
+   "runner": "windows-11-arm",
+   "python": "3.14.10",
+   "outcome": "built",
+   "seconds": 98,
+   "wheel": "cp314-cp314-win_arm64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "jpype1",
+   "version": "1.7.1",
+   "target": "3.14t win-arm64",
+   "runner": "windows-11-arm",
+   "python": "3.14.10t",
+   "outcome": "built",
+   "seconds": 108,
+   "wheel": "cp314-cp314t-win_arm64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": "kept-off",
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "jpype1",
+   "version": "1.7.1",
+   "target": "3.15 linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 28,
+   "wheel": "cp315-cp315-linux_x86_64",
+   "extensions": 0,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "jpype1",
+   "version": "1.7.1",
+   "target": "3.15 win-amd64",
+   "runner": "windows-2025",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 82,
+   "wheel": "cp315-cp315-win_amd64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -1738,13 +2332,63 @@
   },
   {
    "schema": 1,
+   "name": "lupa",
+   "version": "2.8",
+   "target": "3.15 linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 138,
+   "wheel": "cp315-cp315-linux_x86_64",
+   "extensions": 7,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "lupa",
+   "version": "2.8",
+   "target": "3.15 win-amd64",
+   "runner": "windows-2025",
+   "python": "3.15.2",
+   "outcome": "failed",
+   "seconds": 34,
+   "wheel": null,
+   "extensions": null,
+   "import": null,
+   "gil": null,
+   "gil_module": null,
+   "reason": "compile error",
+   "excerpt": "c\\\\lapi.c', '/Fobuild\\\\temp.win-amd64-cpython-315\\\\Release\\\\Users\\\\runneradmin\\\\AppData\\\\Local\\\\Temp\\\\pip-wheel-lc29vhyp\\\\lupa_15b7c4f8e7bb409db7459e9cfd8bcf0a\\\\third-party\\\\lua51\\\\src\\\\lapi.obj'] returned non-zero exit status 1. | note: This error originates from a subprocess, and is likely not a problem with pip. | ERROR: Failed building wheel for lupa | ERROR: Failed to build one or more wheels",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
    "name": "lz4",
    "version": "4.4.5",
    "target": "3.14 musl-aarch64",
    "runner": "ubuntu-24.04-arm",
    "python": "3.14.10",
    "outcome": "built",
-   "seconds": 46,
+   "seconds": 47,
    "wheel": "cp314-cp314-linux_aarch64",
    "extensions": 3,
    "import": "ok",
@@ -1755,8 +2399,8 @@
    "toolchains": [
     "gcc"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -1766,7 +2410,7 @@
    "runner": "ubuntu-24.04",
    "python": "3.14.10t",
    "outcome": "built",
-   "seconds": 6,
+   "seconds": 7,
    "wheel": "cp314-cp314t-linux_x86_64",
    "extensions": 3,
    "import": "ok",
@@ -1780,8 +2424,8 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -1791,7 +2435,7 @@
    "runner": "windows-11-arm",
    "python": "3.14.10t",
    "outcome": "built",
-   "seconds": 30,
+   "seconds": 26,
    "wheel": "cp314-cp314t-win_arm64",
    "extensions": 3,
    "import": "ok",
@@ -1805,8 +2449,58 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "lz4",
+   "version": "4.4.5",
+   "target": "3.15 linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 12,
+   "wheel": "cp315-cp315-linux_x86_64",
+   "extensions": 3,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "lz4",
+   "version": "4.4.5",
+   "target": "3.15 win-amd64",
+   "runner": "windows-2025",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 25,
+   "wheel": "cp315-cp315-win_amd64",
+   "extensions": 3,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -1855,7 +2549,7 @@
   {
    "schema": 1,
    "name": "mysqlclient",
-   "version": "2.3.1",
+   "version": "2.3.2",
    "target": "3.14 musl-aarch64",
    "runner": "ubuntu-24.04-arm",
    "python": "3.14.10",
@@ -1871,18 +2565,18 @@
    "toolchains": [
     "gcc"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
    "name": "mysqlclient",
-   "version": "2.3.1",
+   "version": "2.3.2",
    "target": "3.14t linux-x86_64",
    "runner": "ubuntu-24.04",
    "python": "3.14.10t",
    "outcome": "built",
-   "seconds": 3,
+   "seconds": 5,
    "wheel": "cp314-cp314t-linux_x86_64",
    "extensions": 1,
    "import": "ok",
@@ -1896,8 +2590,33 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "mysqlclient",
+   "version": "2.3.2",
+   "target": "3.15 linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 7,
+   "wheel": "cp315-cp315-linux_x86_64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -1945,6 +2664,56 @@
    ],
    "date": "2026-11-15",
    "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+  },
+  {
+   "schema": 1,
+   "name": "numexpr",
+   "version": "2.14.2",
+   "target": "3.15 linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 16,
+   "wheel": "cp315-cp315-linux_x86_64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "numexpr",
+   "version": "2.14.2",
+   "target": "3.15 win-amd64",
+   "runner": "windows-2025",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 40,
+   "wheel": "cp315-cp315-win_amd64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -2220,7 +2989,7 @@
    "runner": "ubuntu-24.04",
    "python": "3.14.10t",
    "outcome": "failed",
-   "seconds": 4,
+   "seconds": 8,
    "wheel": null,
    "extensions": null,
    "import": null,
@@ -2234,8 +3003,8 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -2245,7 +3014,7 @@
    "runner": "windows-11-arm",
    "python": "3.14.10t",
    "outcome": "failed",
-   "seconds": 38,
+   "seconds": 37,
    "wheel": null,
    "extensions": null,
    "import": null,
@@ -2259,8 +3028,33 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "orjson",
+   "version": "3.13.0",
+   "target": "3.15 linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 14,
+   "wheel": "cp315-cp315-linux_x86_64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -2378,8 +3172,8 @@
    "toolchains": [
     "gcc"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -2389,7 +3183,7 @@
    "runner": "windows-11-arm",
    "python": "3.14.10",
    "outcome": "failed",
-   "seconds": 38,
+   "seconds": 36,
    "wheel": null,
    "extensions": null,
    "import": null,
@@ -2403,8 +3197,8 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -2414,7 +3208,7 @@
    "runner": "ubuntu-24.04",
    "python": "3.14.10t",
    "outcome": "built",
-   "seconds": 11,
+   "seconds": 10,
    "wheel": "cp314-cp314t-linux_x86_64",
    "extensions": 1,
    "import": "ok",
@@ -2428,8 +3222,8 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -2439,7 +3233,7 @@
    "runner": "windows-11-arm",
    "python": "3.14.10t",
    "outcome": "failed",
-   "seconds": 30,
+   "seconds": 36,
    "wheel": null,
    "extensions": null,
    "import": null,
@@ -2453,8 +3247,33 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "psycopg2",
+   "version": "2.9.13",
+   "target": "3.15 linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 10,
+   "wheel": "cp315-cp315-linux_x86_64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -2583,13 +3402,35 @@
   },
   {
    "schema": 1,
-   "name": "pyiceberg",
-   "version": "0.12.0",
+   "name": "pyclipper",
+   "version": "1.4.0",
+   "target": "3.14 musl-aarch64",
+   "runner": "ubuntu-24.04-arm",
+   "python": "3.14.10",
+   "outcome": "built",
+   "seconds": 18,
+   "wheel": "cp314-cp314-linux_aarch64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "gcc"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "pyclipper",
+   "version": "1.4.0",
    "target": "3.14 win-arm64",
    "runner": "windows-11-arm",
    "python": "3.14.10",
    "outcome": "built",
-   "seconds": 27,
+   "seconds": 32,
    "wheel": "cp314-cp314-win_arm64",
    "extensions": 1,
    "import": "ok",
@@ -2603,8 +3444,133 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "pyclipper",
+   "version": "1.4.0",
+   "target": "3.14t linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.14.10t",
+   "outcome": "built",
+   "seconds": 13,
+   "wheel": "cp314-cp314t-linux_x86_64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": "re-enabled",
+   "gil_module": "pyclipper._pyclipper",
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "pyclipper",
+   "version": "1.4.0",
+   "target": "3.14t win-arm64",
+   "runner": "windows-11-arm",
+   "python": "3.14.10t",
+   "outcome": "built",
+   "seconds": 35,
+   "wheel": "cp314-cp314t-win_arm64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": "re-enabled",
+   "gil_module": "pyclipper._pyclipper",
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "pyclipper",
+   "version": "1.4.0",
+   "target": "3.15 linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 19,
+   "wheel": "cp315-cp315-linux_x86_64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "pyclipper",
+   "version": "1.4.0",
+   "target": "3.15 win-amd64",
+   "runner": "windows-2025",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 25,
+   "wheel": "cp315-cp315-win_amd64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "pyiceberg",
+   "version": "0.12.0",
+   "target": "3.14 win-arm64",
+   "runner": "windows-11-arm",
+   "python": "3.14.10",
+   "outcome": "built",
+   "seconds": 29,
+   "wheel": "cp314-cp314-win_arm64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -2614,7 +3580,7 @@
    "runner": "ubuntu-24.04",
    "python": "3.14.10t",
    "outcome": "built",
-   "seconds": 11,
+   "seconds": 10,
    "wheel": "cp314-cp314t-linux_x86_64",
    "extensions": 1,
    "import": "ok",
@@ -2628,8 +3594,8 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -2639,7 +3605,7 @@
    "runner": "windows-11-arm",
    "python": "3.14.10t",
    "outcome": "built",
-   "seconds": 19,
+   "seconds": 21,
    "wheel": "cp314-cp314t-win_arm64",
    "extensions": 1,
    "import": "ok",
@@ -2653,8 +3619,58 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "pyiceberg",
+   "version": "0.12.0",
+   "target": "3.15 linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 14,
+   "wheel": "cp315-cp315-linux_x86_64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "pyiceberg",
+   "version": "0.12.0",
+   "target": "3.15 win-amd64",
+   "runner": "windows-2025",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 30,
+   "wheel": "cp315-cp315-win_amd64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -2874,6 +3890,56 @@
   },
   {
    "schema": 1,
+   "name": "pyyaml",
+   "version": "6.0.3",
+   "target": "3.15 linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 15,
+   "wheel": "cp315-cp315-linux_x86_64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "pyyaml",
+   "version": "6.0.3",
+   "target": "3.15 win-amd64",
+   "runner": "windows-2025",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 29,
+   "wheel": "cp315-cp315-win_amd64",
+   "extensions": 0,
+   "import": "failed",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "ModuleNotFoundError: No module named '_yaml'",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
    "name": "rpds-py",
    "version": "2026.9.1",
    "target": "3.14t win-arm64",
@@ -2905,7 +3971,7 @@
    "runner": "ubuntu-24.04",
    "python": "3.14.10t",
    "outcome": "failed",
-   "seconds": 4,
+   "seconds": 5,
    "wheel": null,
    "extensions": null,
    "import": null,
@@ -2919,8 +3985,8 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43750127182"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -2930,7 +3996,7 @@
    "runner": "windows-11-arm",
    "python": "3.14.10t",
    "outcome": "failed",
-   "seconds": 12,
+   "seconds": 16,
    "wheel": null,
    "extensions": null,
    "import": null,
@@ -2944,8 +4010,8 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43750127182"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -2996,6 +4062,56 @@
    ],
    "date": "2026-11-15",
    "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+  },
+  {
+   "schema": 1,
+   "name": "scikit-image",
+   "version": "0.26.0",
+   "target": "3.15 linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 248,
+   "wheel": "cp315-cp315-linux_x86_64",
+   "extensions": 54,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "scikit-image",
+   "version": "0.26.0",
+   "target": "3.15 win-amd64",
+   "runner": "windows-2025",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 192,
+   "wheel": "cp315-cp315-win_amd64",
+   "extensions": 54,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -3479,8 +4595,8 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -3490,7 +4606,7 @@
    "runner": "windows-11-arm",
    "python": "3.14.10t",
    "outcome": "built",
-   "seconds": 22,
+   "seconds": 23,
    "wheel": "cp314-cp314t-win_arm64",
    "extensions": 1,
    "import": "ok",
@@ -3504,8 +4620,58 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "thrift",
+   "version": "0.25.0",
+   "target": "3.15 linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 7,
+   "wheel": "cp315-cp315-linux_x86_64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "thrift",
+   "version": "0.25.0",
+   "target": "3.15 win-amd64",
+   "runner": "windows-2025",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 27,
+   "wheel": "cp315-cp315-win_amd64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -3601,8 +4767,8 @@
    "toolchains": [
     "gcc"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -3612,7 +4778,7 @@
    "runner": "ubuntu-24.04",
    "python": "3.14.10t",
    "outcome": "built",
-   "seconds": 13,
+   "seconds": 12,
    "wheel": "cp314-cp314t-linux_x86_64",
    "extensions": 1,
    "import": "ok",
@@ -3626,8 +4792,8 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -3637,7 +4803,7 @@
    "runner": "windows-11-arm",
    "python": "3.14.10t",
    "outcome": "built",
-   "seconds": 26,
+   "seconds": 25,
    "wheel": "cp314-cp314t-win_arm64",
    "extensions": 1,
    "import": "ok",
@@ -3651,8 +4817,58 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "tree-sitter",
+   "version": "0.26.1",
+   "target": "3.15 linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 15,
+   "wheel": "cp315-cp315-linux_x86_64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "tree-sitter",
+   "version": "0.26.1",
+   "target": "3.15 win-amd64",
+   "runner": "windows-2025",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 40,
+   "wheel": "cp315-cp315-win_amd64",
+   "extensions": 1,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -3662,7 +4878,7 @@
    "runner": "windows-11-arm",
    "python": "3.14.10",
    "outcome": "failed",
-   "seconds": 12,
+   "seconds": 10,
    "wheel": null,
    "extensions": null,
    "import": null,
@@ -3676,8 +4892,8 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -3687,7 +4903,7 @@
    "runner": "windows-11-arm",
    "python": "3.14.10t",
    "outcome": "failed",
-   "seconds": 8,
+   "seconds": 6,
    "wheel": null,
    "extensions": null,
    "import": null,
@@ -3701,8 +4917,33 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43743579096"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "uvloop",
+   "version": "0.23.0",
+   "target": "3.15 win-amd64",
+   "runner": "windows-2025",
+   "python": "3.15.2",
+   "outcome": "failed",
+   "seconds": 8,
+   "wheel": null,
+   "extensions": null,
+   "import": null,
+   "gil": null,
+   "gil_module": null,
+   "reason": "unsupported platform",
+   "excerpt": "? Getting requirements to build wheel did not run successfully. | RuntimeError: uvloop does not support Windows at the moment | note: This error originates from a subprocess, and is likely not a problem with pip. | ERROR: Failed to build 'uvloop' when getting requirements to build wheel",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -3828,7 +5069,7 @@
    "runner": "ubuntu-24.04",
    "python": "3.14.10t",
    "outcome": "built",
-   "seconds": 60,
+   "seconds": 62,
    "wheel": "cp314-cp314t-linux_x86_64",
    "extensions": 2,
    "import": "ok",
@@ -3842,8 +5083,8 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43750127182"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   },
   {
    "schema": 1,
@@ -3853,7 +5094,7 @@
    "runner": "windows-11-arm",
    "python": "3.14.10t",
    "outcome": "built",
-   "seconds": 46,
+   "seconds": 68,
    "wheel": "cp314-cp314t-win_arm64",
    "extensions": 2,
    "import": "ok",
@@ -3867,8 +5108,58 @@
     "gcc",
     "cmake"
    ],
-   "date": "2026-11-15",
-   "log": "https://github.com/wheelgap/tracker/actions/runs/43750127182"
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "zstandard",
+   "version": "0.25.0",
+   "target": "3.15 linux-x86_64",
+   "runner": "ubuntu-24.04",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 63,
+   "wheel": "cp315-cp315-linux_x86_64",
+   "extensions": 2,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
+  },
+  {
+   "schema": 1,
+   "name": "zstandard",
+   "version": "0.25.0",
+   "target": "3.15 win-amd64",
+   "runner": "windows-2025",
+   "python": "3.15.2",
+   "outcome": "built",
+   "seconds": 57,
+   "wheel": "cp315-cp315-win_amd64",
+   "extensions": 2,
+   "import": "ok",
+   "gil": null,
+   "gil_module": null,
+   "reason": null,
+   "excerpt": "",
+   "toolchains": [
+    "rustc",
+    "cargo",
+    "gcc",
+    "cmake"
+   ],
+   "date": "2026-11-20",
+   "log": "https://github.com/wheelgap/tracker/actions/runs/44829506310"
   }
  ]
 }
