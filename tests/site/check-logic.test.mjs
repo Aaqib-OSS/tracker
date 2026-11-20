@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   parseRepo, rawUrl, pickLockfile, toQuery, fromQuery, sortPythons, freeThreaded, fixFor, rowsFor, headline,
   cliCommand, fixPrompt, verdictText, nextSteps, validRef, labVerdict, labFor, canonicalName, gapWheelFor,
-  gapWheelFixText,
+  gapWheelFixText, withoutUnreadable, unreadableReason, tileText, missedText,
 } from "../../site/check/check-logic.mjs";
 
 test("parseRepo reads the forms people paste", () => {
@@ -30,16 +30,47 @@ test("rawUrl encodes each path segment", () => {
   assert.equal(rawUrl({ owner: "o", name: "r" }, "feat/x", "uv.lock"), "https://raw.githubusercontent.com/o/r/feat/x/uv.lock");
 });
 
-test("pickLockfile prefers the URL's folder, then the first readable one", () => {
+test("pickLockfile prefers the URL's folder, then plan()'s first file, whichever kind it is", () => {
+  // In plan()'s order: shallowest folder first, then wheelgap's own order, a pyproject.toml last in its folder.
   const locks = [
     { path: "requirements.txt", offline: false },
-    { path: "uv.lock", offline: true },
+    { path: "pyproject.toml", offline: false },
     { path: "backend/uv.lock", offline: true },
+    { path: "backend/requirements.txt", offline: false },
+    { path: "docs/requirements.txt", offline: false },
   ];
-  assert.equal(pickLockfile(locks, null).path, "uv.lock");
+  // `wheelgap` in the root reads requirements.txt: a lockfile deeper in the repo doesn't outrank it.
+  assert.equal(pickLockfile(locks, null).path, "requirements.txt");
   assert.equal(pickLockfile(locks, "backend").path, "backend/uv.lock");
-  assert.equal(pickLockfile([{ path: "requirements.txt", offline: false }], null).path, "requirements.txt");
+  // The folder the URL named wins, also when its only file is checked by PyPI lookups.
+  assert.equal(pickLockfile(locks, "docs").path, "docs/requirements.txt");
+  assert.equal(pickLockfile(locks, "elsewhere").path, "requirements.txt");
+  assert.equal(pickLockfile(locks.slice(1), null).path, "pyproject.toml");
   assert.equal(pickLockfile([], null), null);
+});
+
+test("an unreadable pyproject.toml the page picked itself gives way to the repo's other files", () => {
+  const locks = [{ path: "pyproject.toml", offline: false }, { path: "backend/uv.lock", offline: true }];
+  assert.deepEqual(withoutUnreadable(locks, "pyproject.toml", true), [locks[1]]);
+  assert.equal(withoutUnreadable(locks, "pyproject.toml", false), null); // a link or the visitor named it: say why
+  assert.equal(withoutUnreadable(locks, "backend/uv.lock", true), null); // a broken lockfile is reported, not skipped
+  assert.equal(withoutUnreadable([locks[0]], "pyproject.toml", true), null); // nothing else to check
+  const nested = [{ path: "a/pyproject.toml", offline: false }, { path: "a/b/pyproject.toml", offline: false }];
+  assert.deepEqual(withoutUnreadable(nested, "a/pyproject.toml", true), [nested[1]]);
+});
+
+test("a file with nothing to check is no answer; one whose packages were skipped or aren't installed is", () => {
+  const error = "pyproject.toml: no [project] table, so there are no dependencies to read";
+  assert.equal(unreadableReason({ kind: "source", error }), error);
+  // A [project] table with no dependencies: read without an error, and nothing in it to check.
+  const empty = { looked_up: true, listed: 0, packages: 0, skipped: [], rows: [] };
+  assert.equal(unreadableReason(empty), "it lists no dependencies");
+  assert.equal(unreadableReason({ ...empty, listed: 2 }), null); // left off pypi.org, or no target picked installs them
+  assert.equal(unreadableReason({ ...empty, listed: 3, packages: 3 }), null);
+  assert.equal(unreadableReason({ ...empty, looked_up: false }), null); // a lockfile with no packages says so itself
+  assert.equal(unreadableReason({ ...empty, listed: undefined }), null); // a driver that doesn't count them
+  assert.equal(unreadableReason({ kind: "targets", error: "unknown platform" }), null);
+  assert.equal(unreadableReason({ kind: "needs-index", error: "poetry.lock needs the index" }), null);
 });
 
 test("a result's query round-trips, and unknown values are dropped", () => {
@@ -113,6 +144,8 @@ test("the verdict reads right for one target and many", () => {
   assert.equal(verdictText({ gaps: 5, packages: 79, targets: 4 }), "5 of 79 packages have no wheel for at least one of the 4 targets");
   assert.equal(verdictText({ gaps: 0, packages: 10, targets: 1 }), "✓ All 10 packages have a wheel for this target");
   assert.equal(verdictText({ gaps: 0, packages: 10, targets: 6 }), "✓ All 10 packages have a wheel for all 6 targets");
+  // Every package skipped (a requirements file that names another index, say), or none listed: never a ✓.
+  assert.equal(verdictText({ gaps: 0, unknown: 0, packages: 0, targets: 4 }), "No packages were checked");
 });
 
 test("next steps offer what isn't picked yet, as whole selections", () => {
@@ -150,6 +183,31 @@ test("unknown cells are listed but not counted as missing a wheel", () => {
   assert.deepEqual(headline(res), { gaps: 0, unknown: 1, packages: 10, targets: 3 });
   assert.deepEqual(rowsFor(res, "3.14").map((r) => r.name), ["u"]);
   assert.equal(verdictText(headline(res)), "No package is missing a wheel, but 1 of 10 couldn't be checked on some targets");
+});
+
+test("a platform's tile shows a ✓ only when every package was checked and has a wheel", () => {
+  assert.deepEqual(tileText({ wheel: 10, source: 0, missing: 0, unknown: 0 }, false), { mark: "✓", note: "all wheels" });
+  assert.deepEqual(tileText({ wheel: 7, source: 2, missing: 1, unknown: 4 }, false), { mark: "3", note: "without a wheel" });
+  // None known to lack a wheel, but some couldn't be checked (PyPI unreachable, over the lookup cap): never a ✓.
+  assert.deepEqual(tileText({ wheel: 9, source: 0, missing: 0, unknown: 1 }, false), { mark: "?", note: "1 unknown" });
+  assert.deepEqual(tileText({ wheel: 0, source: 0, missing: 0, unknown: 18 }, false), { mark: "?", note: "18 unknown" });
+  assert.deepEqual(tileText({ wheel: 0, source: 0, missing: 0, unknown: 0 }, true), { mark: "–", note: "not locked" });
+});
+
+test("the page says why lookups got no answer, and nothing when they all did", () => {
+  assert.equal(missedText(undefined, "uv.lock"), null); // a lockfile read from its own files
+  assert.equal(missedText({ cap: 300, over_cap: 0, not_found: 0, failed: 0 }, "requirements.txt"), null);
+  assert.equal(
+    missedText({ cap: 300, over_cap: 12, not_found: 1, failed: 2 }, "requirements.txt"),
+    "Not looked up on PyPI, so shown as unknown: 12 beyond the 300 packages this page looks up for one file; " +
+      "2 whose lookup failed or timed out (check again to retry); 1 that PyPI doesn't have under that name or version. " +
+      "uvx wheelgap requirements.txt in a checkout looks them up.",
+  );
+  // The command line wouldn't find these either, so it isn't offered for them.
+  assert.equal(
+    missedText({ cap: 300, over_cap: 0, not_found: 2, failed: 0 }, "Pipfile.lock"),
+    "Not looked up on PyPI, so shown as unknown: 2 that PyPI doesn't have under that name or version.",
+  );
 });
 
 test("refs with '..' or empty segments are refused", () => {
