@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "campaign": "ft-314-linux",
+  "target": "3.14t linux-x86_64",
+  "top": 500,
+  "start": "2026-11-21",
+  "recorded": "2026-11-21",
+  "wheelgap": "0.9.0",
+  "compare": "gil",
+  "packages": [
+    {"name": "grpcio", "rank": 92, "status": "source"},
+    {"name": "psycopg2-binary", "rank": 146, "status": "source"},
+    {"name": "orjson", "rank": 152, "status": "source"},
+    {"name": "zstandard", "rank": 173, "status": "source"},
+    {"name": "psycopg-binary", "rank": 181, "status": "missing"},
+    {"name": "google-crc32c", "rank": 195, "status": "source"},
+    {"name": "grpcio-tools", "rank": 210, "status": "source"},
+    {"name": "pymupdf", "rank": 262, "status": "source"},
+    {"name": "brotli", "rank": 283, "status": "source"},
+    {"name": "litellm", "rank": 295, "status": "source"},
+    {"name": "safetensors", "rank": 313, "status": "source"},
+    {"name": "lz4", "rank": 319, "status": "source"},
+    {"name": "pycryptodome", "rank": 330, "status": "source"},
+    {"name": "fastuuid", "rank": 334, "status": "source"},
+    {"name": "duckdb", "rank": 366, "status": "source"},
+    {"name": "ruamel-yaml-clib", "rank": 376, "status": "source"},
+    {"name": "polars-runtime-32", "rank": 425, "status": "source"},
+    {"name": "opencv-python-headless", "rank": 449, "status": "source"},
+    {"name": "tree-sitter", "rank": 480, "status": "source"},
+    {"name": "ddtrace", "rank": 486, "status": "source"}
+  ]
+}
