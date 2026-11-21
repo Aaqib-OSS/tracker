@@ -4,9 +4,11 @@
 // Messages in: {id, type: "load", repo} | {id, type: "check", lockfile, options}. Out: {id, type, ...}.
 
 import { loadPyodide } from "https://cdn.jsdelivr.net/pyodide/v314.0.8/full/pyodide.mjs";
-import { rawUrl } from "./check-logic.mjs";
+import { rawUrl, trimProject, trimReleases } from "./check-logic.mjs";
 
 // The wheelgap release the page runs; tests/test_check_driver.py tests driver.py against the same one.
+// When this changes, re-read what that release's pypi._fill_json_data, pypi._newest_matching and suggest._has_wheel
+// read from PyPI's JSON: trimProject/trimReleases in check-logic.mjs keep only those fields.
 export const WHEELGAP = "wheelgap==0.13.0";
 const MAX_FILE = 25 * 1024 * 1024;
 const MAX_FIX_LOOKUPS = 80;
@@ -194,7 +196,7 @@ async function check(id, root, lockfile, options) {
         // A lookup that stalls is given up on after 30 seconds, so one request can't hold the whole check.
         const r = await fetch(url, { signal: AbortSignal.timeout(30000) });
         if (r.ok) {
-          const doc = await r.json();
+          const doc = trimProject(await r.json());
           fetched[key] = doc;
           // A project's JSON (a range's lookup) has the release list fixes() asks PyPI for, so it's kept for that.
           // A pinned release's JSON has no release list: kept, it would stop fixes() from ever fetching one.
@@ -228,7 +230,7 @@ async function fixes(id, rows) {
   await pool(todo, 6, async (n) => {
     try {
       const r = await fetch(`https://pypi.org/pypi/${encodeURIComponent(n)}/json`);
-      if (r.ok) releases.set(n, (await r.json()).releases ?? null);
+      if (r.ok) releases.set(n, trimReleases((await r.json()).releases ?? null));
       else if (r.status === 404) releases.set(n, null);
     } catch {
       // network trouble: not cached
