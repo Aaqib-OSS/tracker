@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest import mock
 
 from scripts import build_campaigns, build_lab, build_new_wheels, build_pages, build_platform_pages
+from table_checks import check_tables
 
 # Declared lab coverage for these tests. The musl entry's "platform" is the interpreter's (linux-aarch64), which must
 # not count as lab coverage for Linux ARM64.
@@ -346,6 +347,14 @@ class OverTimeTests(unittest.TestCase):
         ])  # 7 nights before is also the first night, so it isn't repeated
         self.assertIn("for Python 3.15, up 0.7 points since 2026-09-01.", page)
 
+    def test_every_table_is_named_and_keyboard_scrollable(self):
+        # #184: a platform page's most-wanted and Over time tables, and the index's table.
+        page = self.build_with([night(i, 500 + i) for i in range(8)])
+        self.assertEqual(check_tables(page), ["Most-wanted wheels for Python 3.15 on Windows ARM64", "Coverage over time"])
+        self.assertEqual(page.count("<table"), 2)
+        index = (self.site / "platforms" / "index.html").read_text(encoding="utf-8")
+        self.assertEqual(check_tables(index), ["Wheel coverage by platform"])
+
     def test_forty_nights(self):
         history = [night(i, 500 + i) for i in range(40)]
         page = self.build_with(history)
@@ -542,7 +551,9 @@ class BlockersSectionTests(unittest.TestCase):
     def test_table_has_an_accessible_name_and_column_header_scopes(self):
         self.build_with(self.blockers())
         section = self.read("win-arm64").split(self.HEADING, 1)[1].split("</section>", 1)[0]
-        self.assertIn('<table class="matrix" aria-label="Packages blocking the most installs on Python 3.14">', section)
+        # Named and keyboard-scrollable like the page's other tables (#184), with a caption id of its own.
+        self.assertIn("Packages blocking the most installs on Python 3.14", check_tables(self.read("win-arm64")))
+        self.assertIn('<caption id="caption-blockers" class="visually-hidden">', section)
         self.assertEqual(
             re.findall(r"<th\b[^>]*>.*?</th>", section),
             ['<th scope="col">Package</th>', '<th scope="col">Other top-500 installs blocked</th>',
