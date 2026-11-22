@@ -4,7 +4,7 @@
 import {
   PLATFORMS, PYTHONS, parseRepo, inputHint, pickRequestedFile, autoPick, toQuery, fromQuery, sortPythons, freeThreaded,
   fixFor, rowsFor, headline, cliCommand, packageCliCommand, fixPrompt, verdictText, nextSteps, validRef, labVerdict, labFor, canonicalName, gapWheelFor,
-  gapWheelFixText, withoutUnreadable, unreadableReason, privatePyprojectReason, tileText, missedText, badgeMarkdown,
+  gapWheelFixText, withoutUnreadable, unreadableReason, privatePyprojectReason, tileText, missedText, badgeMarkdown, fixLinks,
 } from "./check-logic.mjs";
 
 const $ = (id) => document.getElementById(id);
@@ -34,9 +34,14 @@ async function loadLab(result) {
       const n = names[next++];
       try {
         const r = await fetch(new URL(`../data/packages/${n}.json`, location.href));
-        state.lab[n] = r.ok ? ((await r.json()).builds ?? []) : [];
+        if (r.ok) {
+          const doc = await r.json();
+          state.lab[n] = { ok: true, builds: doc.builds ?? [], issues_url: doc.issues_url ?? null };
+        } else {
+          state.lab[n] = { ok: false, builds: [], issues_url: null };
+        }
       } catch {
-        state.lab[n] = [];
+        state.lab[n] = { ok: false, builds: [], issues_url: null };
       }
     }
   };
@@ -507,7 +512,7 @@ function renderTable() {
     : rows.length
       ? `${rows.length} package${rows.length === 1 ? "" : "s"}. The fix column names the lowest newer release with a wheel for every gap that has one, without losing a wheel elsewhere.`
       : "None: every package installs from a wheel here.";
-  const shownLab = rows.some((row) => labels.some((t) => row.statuses[t.label] === "source" && labFor(state.lab[canonicalName(row.name)], row.version, t.label)));
+  const shownLab = rows.some((row) => labels.some((t) => row.statuses[t.label] === "source" && labFor(state.lab[canonicalName(row.name)]?.builds, row.version, t.label)));
   if (shownLab) {
     $("gaps-note").textContent += " Under a source build, what the tracker's build lab saw building that release from source on GitHub's runners, which have compilers and many system libraries preinstalled (hover for details).";
   }
@@ -520,12 +525,42 @@ function renderTable() {
     const f = fixFor(row, state.fixes);
     const gapWheelFix = f.kind === "none" || f.kind === "loses" ? gapWheelFixText(row, state.gapWheels) : null;
     const fixText = gapWheelFix ?? (f.kind === "pending" ? (state.fixesDone ? "not looked up" : "…") : FIX_TEXT[f.kind](f));
+    const name = canonicalName(row.name);
+    const labPkg = state.lab[name];
+    const hasTracker = Boolean(labPkg?.ok && row.lookup !== false && f.kind !== "private" && f.kind !== "pending");
+    const pypiUrl = `https://pypi.org/project/${encodeURIComponent(row.name)}/${encodeURIComponent(row.version || "")}`;
+
+    const pkgKids = [];
+    if (hasTracker) {
+      pkgKids.push(
+        el("a", { href: `../p/${name}/`, text: row.name }),
+        el("span", { class: "ver", text: row.version || "" }),
+        el("a", { class: "pypi", href: pypiUrl, rel: "noopener", text: "PyPI" })
+      );
+    } else if (row.lookup === false || f.kind === "private" || f.kind === "pending") {
+      pkgKids.push(
+        el("span", { text: row.name }),
+        el("span", { class: "ver", text: row.version || "" })
+      );
+    } else {
+      pkgKids.push(
+        el("a", { href: pypiUrl, rel: "noopener", text: row.name }),
+        el("span", { class: "ver", text: row.version || "" })
+      );
+    }
+
+    const links = fixLinks(row, f, labPkg, state.gapWheels);
+    const fixKids = [el("span", { text: fixText })];
+    for (const link of links) {
+      fixKids.push(el("span", { class: "fix-link" }, el("a", { href: link.href, rel: link.rel || "noopener", text: link.text })));
+    }
+
     return el("tr", {},
-      el("td", { class: "pkg" }, el("a", { href: `https://pypi.org/project/${encodeURIComponent(row.name)}/${encodeURIComponent(row.version || "")}`, rel: "noopener", text: row.name }), el("span", { class: "ver", text: row.version || "" })),
+      el("td", { class: "pkg" }, ...pkgKids),
       ...labels.map((t) => {
         const s = row.statuses[t.label];
         if (s === "n/a") return el("td", {}, el("span", { class: "na", text: "–", title: "not installed on this target" }));
-        const lab = s === "source" ? labFor(state.lab[canonicalName(row.name)], row.version, t.label) : null;
+        const lab = s === "source" ? labFor(labPkg?.builds, row.version, t.label) : null;
         const v = lab ? labVerdict(lab) : null;
         return el("td", {}, el("span", { class: `status s-${s}`, text: STATUS_TEXT[s] || s }),
           v ? el("span", { class: `lab lab-${v.kind}`, text: LAB_SHORT[v.kind], title: `Build lab, ${lab.date} on ${lab.runner}: ${v.text}` }) : null,
@@ -533,7 +568,7 @@ function renderTable() {
             ? el("span", { class: "lab", text: "gap wheel", title: state.gapWheels.unofficial })
             : null);
       }),
-      el("td", { class: `fix fix-${f.kind}`, text: fixText }));
+      el("td", { class: `fix fix-${f.kind}` }, ...fixKids));
   }));
   $("gap-table").replaceChildren(head, body);
   $("gap-table").hidden = !rows.length;
@@ -571,7 +606,7 @@ async function copy(button, text, done) {
 }
 
 $("copy-link").onclick = (e) => copy(e.currentTarget, location.href, "Link copied");
-$("copy-prompt").onclick = (e) => copy(e.currentTarget, fixPrompt(`${state.repo.owner}/${state.repo.name}`, state.result, state.fixes, state.pythons, state.platforms, state.gapWheels), "Prompt copied");
+$("copy-prompt").onclick = (e) => copy(e.currentTarget, fixPrompt(`${state.repo.owner}/${state.repo.name}`, state.result, state.fixes, state.pythons, state.platforms, state.gapWheels, state.lab), "Prompt copied");
 $("copy-badge").onclick = (e) => copy(e.currentTarget, $("badge-md").textContent, "Badge Markdown copied");
 $("copy-gap-wheels").onclick = (e) => copy(e.currentTarget, state.gapWheels.text, "Gap wheel instructions copied");
 $("more").onclick = () => { state.showAll = true; renderTable(); };
