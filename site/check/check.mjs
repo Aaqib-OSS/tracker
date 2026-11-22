@@ -3,7 +3,7 @@
 
 import {
   PLATFORMS, PYTHONS, parseRepo, inputHint, pickRequestedFile, autoPick, toQuery, fromQuery, sortPythons, freeThreaded,
-  fixFor, rowsFor, headline, cliCommand, packageCliCommand, fixPrompt, verdictText, nextSteps, validRef, labVerdict, labFor, canonicalName, gapWheelFor,
+  fixFor, rowsFor, headline, cliCommand, packageCliCommand, fixPrompt, verdictText, shareText, nextSteps, validRef, labVerdict, labFor, canonicalName, gapWheelFor,
   gapWheelFixText, withoutUnreadable, unreadableReason, privatePyprojectReason, tileText, missedText, badgeMarkdown, fixLinks,
 } from "./check-logic.mjs";
 
@@ -347,6 +347,7 @@ function needsIndex(path) {
 function hideResultSections(hidden, keepSetup = false) {
   if (hidden) {
     $("next").hidden = true;
+    $("verdict-badge").hidden = true;
     $("verdict").closest("section").classList.remove("clean");
   }
   for (const id of ["targets-title", "gaps-title", "next-title"]) $(id).closest("section").hidden = hidden;
@@ -371,7 +372,10 @@ function renderVerdict() {
   const privateReason = privatePyprojectReason(r);
   const card = $("verdict").closest("section");
   const repoName = `${state.repo.owner}/${state.repo.name}`;
-  card.classList.toggle("clean", h.gaps === 0 && h.unknown === 0 && h.targets > 0 && h.packages > 0);
+  const isClean = h.gaps === 0 && h.unknown === 0 && h.targets > 0 && h.packages > 0;
+  card.classList.toggle("clean", isClean);
+  // Not offered while a private index's packages went unchecked: "keep it that way" would claim a pass for them too.
+  $("verdict-badge").hidden = !isClean || (r.private || []).length > 0;
   $("verdict").textContent = privateReason ? `${r.lockfile} wasn't checked: ${privateReason}`
     : h.targets === 0 ? `${repoName}'s lockfile leaves out every Python picked` : verdictText(h);
   const steps = nextSteps(state.pythons, state.platforms);
@@ -578,6 +582,11 @@ function renderTable() {
 
 function renderNext() {
   const r = state.result;
+  const h = headline(r);
+  const isClean = h.gaps === 0 && h.unknown === 0 && h.targets > 0 && h.packages > 0;
+  $("next-title").textContent = isClean && !(r.private || []).length ? "Keep it green" : "Fix it";
+  $("copy-prompt").hidden = isClean;
+  $("prompt-note").hidden = isClean;
   $("cli").textContent = cliCommand(r, state.pythons, state.platforms);
   // The link names the lockfile only when a visit with the repo alone would start from another one.
   $("badge-md").textContent = badgeMarkdown(state.repo, r.lockfile, autoPick(state.plan.lockfiles.filter((l) => !l.added), null).lock?.path ?? null);
@@ -606,8 +615,13 @@ async function copy(button, text, done) {
 }
 
 $("copy-link").onclick = (e) => copy(e.currentTarget, location.href, "Link copied");
+// The line names only what the shown result counted: its own targets, less the Pythons the lockfile leaves out,
+// never the current selection (a new check may still be running for it), and how many it left off pypi.org.
+const counted = (key) => [...new Set(state.result.targets.filter((t) => !state.result.outside_lock.includes(t.python)).map((t) => t[key]))];
+$("copy-share").onclick = (e) => copy(e.currentTarget, shareText(`${state.repo.owner}/${state.repo.name}`, headline(state.result), counted("python"), counted("platform"), location.href, (state.result.private || []).length), "Result copied");
 $("copy-prompt").onclick = (e) => copy(e.currentTarget, fixPrompt(`${state.repo.owner}/${state.repo.name}`, state.result, state.fixes, state.pythons, state.platforms, state.gapWheels, state.lab), "Prompt copied");
 $("copy-badge").onclick = (e) => copy(e.currentTarget, $("badge-md").textContent, "Badge Markdown copied");
+$("copy-verdict-badge").onclick = (e) => copy(e.currentTarget, $("badge-md").textContent, "Badge Markdown copied");
 $("copy-gap-wheels").onclick = (e) => copy(e.currentTarget, state.gapWheels.text, "Gap wheel instructions copied");
 $("more").onclick = () => { state.showAll = true; renderTable(); };
 
