@@ -399,6 +399,12 @@ function renderVerdict() {
   const missed = missedText(r.missed, r.lockfile);
   if (missed) alerts.push(el("p", { class: "alert warn", text: missed }));
   const some = (names) => `${names.slice(0, 8).join(", ")}${names.length > 8 ? `, and ${names.length - 8} more` : ""}`;
+  for (const host of r.extra_indexes || []) {
+    // The packages that index may serve instead of PyPI's are unknown, never PyPI's answer as if it were certain.
+    const served = r.rows.filter((row) => row.reason && row.reason.includes(host)).map((row) => row.name);
+    const why = served.length ? ` ${some(served)} may be installed from there instead, so ${served.length === 1 ? "it's" : "they're"} shown as unknown.` : "";
+    alerts.push(el("p", { class: "alert warn", text: `${r.lockfile} also installs from ${host} (--extra-index-url). This page checked PyPI only.${why}` }));
+  }
   const privateIndex = r.private || [];
   if (privateReason) {
     // The zero-package result hides "Fix it", so keep the local command here with the explanation.
@@ -529,7 +535,8 @@ function renderTable() {
   const body = el("tbody", {}, ...shown.map((row) => {
     const f = fixFor(row, state.fixes);
     const gapWheelFix = f.kind === "none" || f.kind === "loses" ? gapWheelFixText(row, state.gapWheels) : null;
-    const fixText = gapWheelFix ?? (f.kind === "pending" ? (state.fixesDone ? "not looked up" : "…") : FIX_TEXT[f.kind](f));
+    // An unknown-only row can say why (a package an extra index may serve instead of PyPI's).
+    const fixText = gapWheelFix ?? (f.kind === "pending" ? (state.fixesDone ? "not looked up" : "…") : f.kind === "unchecked" && row.reason ? row.reason : FIX_TEXT[f.kind](f));
     const name = canonicalName(row.name);
     const labPkg = state.lab[name];
     const hasTracker = Boolean(labPkg?.ok && row.lookup !== false && f.kind !== "private" && f.kind !== "pending");

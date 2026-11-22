@@ -245,7 +245,11 @@ export function privateText(r) {
     const why = r.configs_unknown
       ? `GitHub listed only part of this repo's files, so a uv.toml, pyproject.toml or pdm.toml beside ${r.lockfile} or in a folder above it may be missing from the list`
       : `${list(unread, 3)} (beside ${r.lockfile} or in a folder above it) couldn't be read here`;
-    const retry = r.configs_unknown ? `uvx wheelgap ${r.lockfile} in a checkout reads them all.` : `Check again to retry, or run uvx wheelgap ${r.lockfile} in a checkout.`;
+    // wheelgap's CLI looks a requirements file's packages up on PyPI unless --index-url names another index, so the
+    // command a visitor runs says so: the plain one would send these names to pypi.org.
+    const retry = r.configs_unknown
+      ? `In a checkout, run uvx wheelgap --index-url with your project's index and ${r.lockfile}: it reads them all, and without --index-url it would look these names up on PyPI.`
+      : `Check again to retry, or in a checkout run uvx wheelgap --index-url with your project's index and ${r.lockfile}: without --index-url it would look these names up on PyPI.`;
     return `Not checked: ${why}. Such a file can point installers at an index other than PyPI (a [tool.uv] index, say), ${after} ${retry}`;
   }
   const near = (r.configs || []).filter((c) => c !== r.lockfile);

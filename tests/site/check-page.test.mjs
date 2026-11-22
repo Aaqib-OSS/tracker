@@ -1111,3 +1111,87 @@ test("the package fallback and the chooser: a named file's notice comes first, a
   assert.match(read("worker.mjs"), /return \{ plan, detected, truncated: Boolean\(tree\.truncated\), ref, root, fileInTree, projectName \};/);
 });
 
+test("renderVerdict alerts on public extra indexes and avoids --index-url advice for private indexes", () => {
+  const source = read("check.mjs");
+  const rv = source.match(/^function renderVerdict\(\) \{.*?^}$/ms);
+  assert.ok(rv, "renderVerdict is in check.mjs");
+
+  const run = (resultExtra) => {
+    const made = new Map();
+    const element = (key) => {
+      if (!made.has(key)) {
+        made.set(key, {
+          hidden: null,
+          textContent: "",
+          children: [],
+          classList: { toggle() {} },
+          closest: () => element(`${key} section`),
+          replaceChildren(...kids) { this.children = kids; },
+        });
+      }
+      return made.get(key);
+    };
+    const el = (tag, attrs = {}, ...kids) => ({ tag, attrs, kids });
+    const state = {
+      repo: { owner: "o", name: "r" },
+      ref: "main",
+      pythons: ["3.13"],
+      platforms: ["linux-x86_64"],
+      result: {
+        lockfile: "requirements.txt",
+        packages: 2,
+        targets: [{ label: "3.13 linux-x86_64", python: "3.13", platform: "linux-x86_64" }],
+        outside_lock: [],
+        rows: [],
+        skipped: [],
+        private: [],
+        extra_indexes: [],
+        looked_up: true,
+        ...resultExtra,
+      },
+    };
+    const renderVerdict = new Function(
+      "$", "state", "el", "headline", "verdictText", "nextSteps", "sortPythons", "missedText", "privatePyprojectReason",
+      "privateText", "cliCommand", "runCheck", `${rv[0]}; return renderVerdict;`,
+    )(
+      element, state, el, checkLogic.headline, checkLogic.verdictText, checkLogic.nextSteps,
+      checkLogic.sortPythons, checkLogic.missedText, checkLogic.privatePyprojectReason, checkLogic.privateText,
+      checkLogic.cliCommand, () => {},
+    );
+    renderVerdict();
+    return element("alerts").children.map((c) => c.attrs.text);
+  };
+
+  const extraAlerts = run({ extra_indexes: ["download.pytorch.org"] });
+  assert.ok(
+    extraAlerts.includes("requirements.txt also installs from download.pytorch.org (--extra-index-url). This page checked PyPI only."),
+  );
+
+  // The packages the extra index may serve are named, as unknown.
+  const torch = { name: "torch", version: "2.6.0", gaps: [], unknown: ["3.13 linux-x86_64"], statuses: {}, reason: "may be installed from download.pytorch.org, which this page doesn't read" };
+  const named = run({ extra_indexes: ["download.pytorch.org"], rows: [torch], packages: 3 });
+  assert.ok(named.includes("requirements.txt also installs from download.pytorch.org (--extra-index-url). This page checked PyPI only. torch may be installed from there instead, so it's shown as unknown."), named.join("\n"));
+
+  const privAlerts = run({ private: ["corp-pkg"], skipped: ["corp-pkg"], reader: "requirements" });
+  // Never a plain command: the CLI would look these names up on PyPI without --index-url.
+  assert.ok(privAlerts.some((t) => t.includes("run uvx wheelgap --index-url with its URL in a checkout")));
+  assert.ok(privAlerts.every((t) => !t.includes("checks them on PyPI's files")));
+  // A Pipfile.lock that pins a package to its own index: the CLI skips that one too, so --index-url is still the way.
+  const pipfile = run({ lockfile: "Pipfile.lock", private: ["corp-pkg"], skipped: ["corp-pkg"], reader: "pipfile", looked_up: true });
+  assert.ok(pipfile.some((t) => t.includes("run uvx wheelgap --index-url with its URL in a checkout")));
+  // A settings file that couldn't be read keeps its own reason and advice, whatever the reader (#235).
+  const unread = run({ private: ["corp-pkg"], skipped: ["corp-pkg"], reader: "requirements", configs: [], configs_unread: ["pyproject.toml"], configs_unknown: false });
+  assert.ok(unread.some((t) => t.includes("pyproject.toml (beside requirements.txt or in a folder above it) couldn't be read here") && t.endsWith("Check again to retry, or in a checkout run uvx wheelgap --index-url with your project's index and requirements.txt: without --index-url it would look these names up on PyPI.")));
+  assert.ok(unread.every((t) => !t.includes("checks them on PyPI's files")));
+});
+
+test("an unknown row's reason is its Fix text, so a touch screen shows it too", () => {
+  const source = read("check.mjs");
+  assert.match(source, /f\.kind === "unchecked" && row\.reason \? row\.reason : FIX_TEXT\[f\.kind\]\(f\)/);
+  assert.equal(checkLogic.fixFor({ name: "torch", gaps: [], unknown: ["3.14 linux-x86_64"], lookup: false }, {}).kind, "unchecked");
+});
+
+test("a truncated file list passes no settings-file list, so an extra-index file stays private", () => {
+  // The driver refuses a null list (test_check_driver.py); a partial one could miss a root uv.toml or pyproject.toml.
+  assert.match(read("worker.mjs"), /configs: tree\.truncated \? null : plan\.configs/);
+});
