@@ -278,9 +278,102 @@ test("the badge is a small static image on the page's own origin, offered as Mar
 
   const page = read("check.mjs");
   // Filled in as text, from the pure helper, and copied the way the other buttons copy.
-  assert.match(page, /\$\("badge-md"\)\.textContent = badgeMarkdown\(state\.repo, r\.lockfile, pickLockfile\(state\.plan\.lockfiles, null\)\?\.path \?\? null\);/);
+  // The default is what a visit with the repo alone would pick: from the repo's own files, never one a blob link or
+  // ?lock= added (`added`), so the link keeps lock= for that file.
+  assert.match(page, /\$\("badge-md"\)\.textContent = badgeMarkdown\(state\.repo, r\.lockfile, pickLockfile\(state\.plan\.lockfiles\.filter\(\(l\) => !l\.added\), null\)\?\.path \?\? null\);/);
+  const repoFiles = [{ path: "pyproject.toml", offline: false }];
+  const added = { path: "requirements/default.txt", offline: false, added: true };
+  const defaultOf = (lockfiles) => checkLogic.pickLockfile(lockfiles.filter((l) => !l.added), null)?.path ?? null;
+  const repo = { owner: "celery", name: "celery" };
+  assert.match(checkLogic.badgeMarkdown(repo, added.path, defaultOf([...repoFiles, added])), /\?repo=celery\/celery&lock=requirements\/default\.txt\)$/);
+  assert.match(checkLogic.badgeMarkdown(repo, added.path, defaultOf([added])), /&lock=requirements\/default\.txt\)$/); // its only file
+  assert.match(checkLogic.badgeMarkdown(repo, "pyproject.toml", defaultOf([...repoFiles, added])), /\?repo=celery\/celery\)$/);
   assert.match(page, /\$\("copy-badge"\)\.onclick = \(e\) => copy\(e\.currentTarget, \$\("badge-md"\)\.textContent, "Badge Markdown copied"\);/);
   assert.doesNotMatch(page, /innerHTML/);
+});
+
+test("a blob link checks the named file when readable, or announces the fallback when not", () => {
+  const source = read("check.mjs");
+  const fn = source.match(/^function onLoaded\(.*?^}$/ms);
+  assert.ok(fn, "onLoaded is in check.mjs");
+
+  const runOnLoaded = ({ repo, lockfiles, fileInTree, query = null }) => {
+    const state = { repo, query };
+    let ran = 0;
+    const onLoaded = new Function(
+      "state", "pickRequestedFile", "sortPythons", "NAMES", "status", "$", "noLockfile", "runCheck",
+      `${fn[0]}; return onLoaded;`,
+    )(
+      state,
+      checkLogic.pickRequestedFile,
+      checkLogic.sortPythons,
+      Object.fromEntries(checkLogic.PLATFORMS),
+      () => {},
+      () => ({ disabled: false }),
+      () => {},
+      () => { ran++; },
+    );
+    onLoaded({
+      plan: { lockfiles: [...lockfiles] },
+      detected: { pythons: ["3.13"], platforms: ["linux-x86_64"] },
+      truncated: false,
+      ref: "main",
+      root: "/repos/1",
+      fileInTree,
+    });
+    return { state, ran };
+  };
+
+  // Blob link to requirements/default.txt (unlisted, exists in tree): adds and checks it.
+  const reqs = runOnLoaded({
+    repo: checkLogic.parseRepo("https://github.com/celery/celery/blob/main/requirements/default.txt"),
+    lockfiles: [{ path: "pyproject.toml", offline: false }],
+    fileInTree: true,
+  });
+  assert.equal(reqs.ran, 1);
+  assert.equal(reqs.state.lockfile, "requirements/default.txt");
+  assert.equal(reqs.state.auto, false);
+  assert.equal(reqs.state.fileNotice, null);
+  // Added after the repo's own files, so the badge's automatic pick (lockfiles[0]) is still pyproject.toml and
+  // the badge link keeps lock=requirements/default.txt.
+  assert.deepEqual(reqs.state.plan.lockfiles.map((l) => l.path), ["pyproject.toml", "requirements/default.txt"]);
+  assert.equal(checkLogic.pickLockfile(reqs.state.plan.lockfiles, null).path, "pyproject.toml");
+
+  // Blob link to listed backend/uv.lock: checks backend/uv.lock, not root uv.lock.
+  const nested = runOnLoaded({
+    repo: checkLogic.parseRepo("https://github.com/o/r/blob/main/backend/uv.lock"),
+    lockfiles: [{ path: "uv.lock", offline: true }, { path: "backend/uv.lock", offline: true }],
+    fileInTree: true,
+  });
+  assert.equal(nested.ran, 1);
+  assert.equal(nested.state.lockfile, "backend/uv.lock");
+  assert.equal(nested.state.auto, false);
+  assert.equal(nested.state.fileNotice, null);
+
+  // Blob link to README.md: announces why it wasn't read and falls back to automatic pick.
+  const readme = runOnLoaded({
+    repo: checkLogic.parseRepo("https://github.com/o/r/blob/main/README.md"),
+    lockfiles: [{ path: "uv.lock", offline: true }],
+    fileInTree: true,
+  });
+  assert.equal(readme.ran, 1);
+  assert.equal(readme.state.lockfile, "uv.lock");
+  assert.equal(readme.state.auto, true);
+  assert.equal(readme.state.fileNotice, "README.md isn't a file this page reads.");
+
+  // A uv.lock in a folder plan() skips (examples/) is still a file the page reads: it's checked, not refused.
+  const example = runOnLoaded({
+    repo: checkLogic.parseRepo("https://github.com/o/r/blob/main/examples/app/uv.lock"),
+    lockfiles: [{ path: "uv.lock", offline: true }],
+    fileInTree: true,
+  });
+  assert.equal(example.state.lockfile, "examples/app/uv.lock");
+  assert.equal(example.state.fileNotice, null);
+
+  // The verdict names the file it ended up checking, read at render time: after a tool-settings-only
+  // pyproject.toml gives way to requirements.txt, the notice must not still say pyproject.toml.
+  assert.match(source, /text: `\$\{state\.fileNotice\} Checked \$\{r\.lockfile\} instead\.`/);
+  assert.match(read("worker.mjs"), /paths\.includes\(wanted\) \|\| tree\.truncated/);
 });
 
 test("showInputError builds package and other-host hints as DOM nodes inside the status region", () => {
