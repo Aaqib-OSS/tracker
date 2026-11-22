@@ -278,18 +278,97 @@ test("the badge is a small static image on the page's own origin, offered as Mar
 
   const page = read("check.mjs");
   // Filled in as text, from the pure helper, and copied the way the other buttons copy.
-  // The default is what a visit with the repo alone would pick: from the repo's own files, never one a blob link or
-  // ?lock= added (`added`), so the link keeps lock= for that file.
-  assert.match(page, /\$\("badge-md"\)\.textContent = badgeMarkdown\(state\.repo, r\.lockfile, pickLockfile\(state\.plan\.lockfiles\.filter\(\(l\) => !l\.added\), null\)\?\.path \?\? null\);/);
+  // The default is what a visit with the repo alone checks by itself: autoPick() over the repo's own files, never
+  // one a blob link or ?lock= added (`added`), so the link keeps lock= for that file; none when it would ask which.
+  assert.match(page, /\$\("badge-md"\)\.textContent = badgeMarkdown\(state\.repo, r\.lockfile, autoPick\(state\.plan\.lockfiles\.filter\(\(l\) => !l\.added\), null\)\.lock\?\.path \?\? null\);/);
   const repoFiles = [{ path: "pyproject.toml", offline: false }];
   const added = { path: "requirements/default.txt", offline: false, added: true };
-  const defaultOf = (lockfiles) => checkLogic.pickLockfile(lockfiles.filter((l) => !l.added), null)?.path ?? null;
+  const defaultOf = (lockfiles) => checkLogic.autoPick(lockfiles.filter((l) => !l.added), null).lock?.path ?? null;
   const repo = { owner: "celery", name: "celery" };
   assert.match(checkLogic.badgeMarkdown(repo, added.path, defaultOf([...repoFiles, added])), /\?repo=celery\/celery&lock=requirements\/default\.txt\)$/);
   assert.match(checkLogic.badgeMarkdown(repo, added.path, defaultOf([added])), /&lock=requirements\/default\.txt\)$/); // its only file
   assert.match(checkLogic.badgeMarkdown(repo, "pyproject.toml", defaultOf([...repoFiles, added])), /\?repo=celery\/celery\)$/);
+  // Several requirements files under other names: a visit asks, so every badge names its file.
+  const others = [{ path: "requirements/base.txt", offline: false, other: true }, { path: "requirements/docs.txt", offline: false, other: true }];
+  assert.equal(defaultOf(others), null);
   assert.match(page, /\$\("copy-badge"\)\.onclick = \(e\) => copy\(e\.currentTarget, \$\("badge-md"\)\.textContent, "Badge Markdown copied"\);/);
   assert.doesNotMatch(page, /innerHTML/);
+});
+
+// onLoaded() and onResult() with the worker and the DOM stood in: `chooseFile` and `runCheck` record what they're
+// asked to do.
+function pickPage(lockfiles, { query = null, lockfile = null } = {}) {
+  const source = read("check.mjs");
+  const fn = (name) => source.match(new RegExp(`^function ${name}\\(.*?^}$`, "ms"))[0];
+  const calls = [];
+  const $ = () => ({ hidden: false, textContent: "", disabled: false });
+  const state = { repo: { owner: "celery", name: "celery", dir: null }, query, lockfile, auto: true, detected: { unreadable: [] } };
+  const page = new Function(
+    "state", "$", "status", "autoPick", "pickRequestedFile", "privatePyprojectReason", "sortPythons", "NAMES", "noLockfile",
+    "needsIndex", "runCheck", "chooseFile", "unreadableReason", "withoutUnreadable",
+    `${fn("onLoaded")}\n${fn("onResult")}\nreturn { onLoaded, onResult };`,
+  )(
+    state, $, () => {}, checkLogic.autoPick, checkLogic.pickRequestedFile, checkLogic.privatePyprojectReason,
+    checkLogic.sortPythons, Object.fromEntries(checkLogic.PLATFORMS),
+    () => calls.push(["noLockfile"]), () => calls.push(["needsIndex"]), () => calls.push(["runCheck", state.lockfile]),
+    (files) => calls.push(["choose", files.map((l) => l.path)]), checkLogic.unreadableReason, checkLogic.withoutUnreadable,
+  );
+  const loaded = () => page.onLoaded({
+    plan: { lockfiles: [...lockfiles] }, detected: { pythons: ["3.14"], platforms: ["linux-x86_64"], unreadable: [] },
+    truncated: false, ref: "HEAD", root: "/repos/1",
+  });
+  return { page, state, calls, loaded };
+}
+
+test("with several requirements files under other names and nothing else, the page asks which one, never guesses", () => {
+  const celery = [
+    { path: "pyproject.toml", offline: false },
+    { path: "requirements/default.txt", offline: false, other: true },
+    { path: "requirements/docs.txt", offline: false, other: true },
+  ];
+  // The pyproject.toml (tool settings only) is tried first, then the visitor is asked: no runtime-sounding name wins.
+  const p = pickPage(celery);
+  p.loaded();
+  assert.deepEqual(p.calls, [["runCheck", "pyproject.toml"]]);
+  p.page.onResult({ kind: "source", error: "pyproject.toml: no [project] table, so there are no dependencies to read" });
+  assert.deepEqual(p.calls.at(-1), ["choose", ["requirements/default.txt", "requirements/docs.txt"]]);
+  assert.equal(p.calls.filter(([c]) => c === "runCheck").length, 1);
+  // Only those files: asked straight away.
+  const only = pickPage(celery.slice(1));
+  only.loaded();
+  assert.deepEqual(only.calls, [["choose", ["requirements/default.txt", "requirements/docs.txt"]]]);
+  assert.deepEqual(only.state.platforms, ["linux-x86_64"]); // set, so the picker's check has targets
+  // One such file is the answer, as `wheelgap DIR` reads its only one; a link that names a file checks that one.
+  const one = pickPage(celery.slice(1, 2));
+  one.loaded();
+  assert.deepEqual(one.calls, [["runCheck", "requirements/default.txt"]]);
+  // But a lone one named for development is offered, not checked.
+  const dev = pickPage([{ path: "requirements-dev.txt", offline: false, other: true }]);
+  dev.loaded();
+  assert.deepEqual(dev.calls, [["choose", ["requirements-dev.txt"]]]);
+  assert.match(read("check.mjs"), /\$\("lock-pick"\)\.hidden = locks\.length < 2 && Boolean\(state\.lockfile\);/);
+  const named = pickPage(celery.slice(1), { query: { lockfile: "requirements/docs.txt" } });
+  named.loaded();
+  assert.deepEqual(named.calls, [["runCheck", "requirements/docs.txt"]]);
+  // An exactly-named file anywhere still comes first, as before these files were listed.
+  // A link to a file the page can't read, in such a repo: the notice, then the question.
+  const readme = pickPage(celery.slice(1), { query: { lockfile: "README.md" } });
+  readme.loaded();
+  assert.deepEqual(readme.calls, [["choose", ["requirements/default.txt", "requirements/docs.txt"]]]);
+  assert.equal(readme.state.fileNotice, "README.md isn't a file this page reads.");
+  assert.match(read("check.mjs"), /\$\("alerts"\)\.replaceChildren\(\.\.\.\(state\.fileNotice \? \[el\("p", \{ class: "alert warn", text: `\$\{state\.fileNotice\} Pick a file to check instead\.` \}\)\] : \[\]\)\);/);
+  const nested = pickPage([...celery.slice(1), { path: "backend/uv.lock", offline: true }]);
+  nested.loaded();
+  assert.deepEqual(nested.calls, [["runCheck", "backend/uv.lock"]]);
+  assert.match(read("check.mjs"), /state\.lockfile \? \[\] : \[el\("option", \{ value: "", disabled: true, selected: true, text: "Choose a file…" \}\)\]/);
+  // While nothing is picked, a platform or Python chip only redraws the setup: there's no file to check yet.
+  const run = read("check.mjs").match(/^function runCheck\(\) \{.*?^}$/ms)[0];
+  const drawn = [];
+  const runCheck = new Function("state", "renderSetup", "keepFocus", "worker", `${run}; return runCheck;`)(
+    { lockfile: null }, () => drawn.push("setup"), (fn) => fn(), { postMessage: () => drawn.push("posted") },
+  );
+  runCheck();
+  assert.deepEqual(drawn, ["setup"]);
 });
 
 // Exercise the page's actual selection and render pipeline, with the worker and DOM stood in. The driver contract
@@ -550,3 +629,17 @@ test("showInputError builds package and other-host hints as DOM nodes inside the
   assert.match(source, /if \(!state\.repo && !state\.inputError\) status\(`Ready\./);
   assert.match(source, /function start\(repo, query = null\) \{\n\s+state\.inputError = false;/);
 });
+
+test("an all-private root pyproject.toml gives way to no requirements file its settings cover, other-named or not", () => {
+  // #223's folder filter applies to #229's requirements files under other names too: no second check, no chooser.
+  const page = resultPage([
+    { path: "pyproject.toml", offline: false },
+    { path: "requirements/default.txt", offline: false, other: true },
+    { path: "requirements/docs.txt", offline: false, other: true },
+  ]);
+  page.onResult(privateResult);
+  assert.equal(page.posts.length, 1, "no fallback request");
+  assert.equal(page.state.lockfile, "pyproject.toml");
+  assert.match(page.$("verdict").textContent, /pyproject.toml wasn't checked/);
+});
+

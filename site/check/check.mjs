@@ -2,7 +2,7 @@
 // Everything shown from the repo or PyPI goes in with textContent, never as HTML.
 
 import {
-  PLATFORMS, PYTHONS, parseRepo, inputHint, pickLockfile, pickRequestedFile, toQuery, fromQuery, sortPythons, freeThreaded,
+  PLATFORMS, PYTHONS, parseRepo, inputHint, pickRequestedFile, autoPick, toQuery, fromQuery, sortPythons, freeThreaded,
   fixFor, rowsFor, headline, cliCommand, fixPrompt, verdictText, nextSteps, validRef, labVerdict, labFor, canonicalName, gapWheelFor,
   gapWheelFixText, withoutUnreadable, unreadableReason, privatePyprojectReason, tileText, missedText, badgeMarkdown,
 } from "./check-logic.mjs";
@@ -177,23 +177,25 @@ function onLoaded({ plan, detected, truncated, ref, root, fileInTree }) {
   const requested = q?.lockfile || state.repo.file || null;
   const picked = pickRequestedFile(plan.lockfiles, requested, Boolean(fileInTree), state.repo.dir);
   plan.lockfiles = picked.lockfiles;
-  const lock = picked.lock;
   state.auto = picked.auto; // the page's own pick, not one a link or the visitor named
   state.fileNotice = picked.notice;
-  if (!lock) {
+  if (!picked.lock && !picked.choose) {
     status("");
     $("go").disabled = false;
     return noLockfile();
   }
-  state.lockfile = lock.path;
   state.pythons = sortPythons(q?.pythons?.length ? q.pythons : detected.pythons);
   state.platforms = q?.platforms?.length ? q.platforms : detected.platforms.filter((p) => NAMES[p]);
   if (!state.platforms.length) state.platforms = ["linux-x86_64"];
   state.query = null;
+  if (!picked.lock) return chooseFile(picked.choose);
+  state.lockfile = picked.lock.path;
   runCheck();
 }
 
 function runCheck() {
+  // No file picked yet (chooseFile()): a platform or Python chip changes the selection, and the check waits for one.
+  if (!state.lockfile) return keepFocus(renderSetup);
   state.fixes = null;
   state.fixesDone = false;
   state.showAll = false;
@@ -228,7 +230,9 @@ function onResult(result) {
     // next file is checked instead, and "What was read" says why this one wasn't.
     state.detected.unreadable.push({ path: state.lockfile, line: null, reason });
     state.plan.lockfiles = rest;
-    state.lockfile = pickLockfile(rest, state.repo.dir).path;
+    const pick = autoPick(rest, state.repo.dir);
+    if (!pick.lock) return chooseFile(pick.choose);
+    state.lockfile = pick.lock.path;
     return runCheck();
   }
   if (result.error) {
@@ -244,6 +248,26 @@ function onResult(result) {
   loadLab(result);
   keepFocus(render);
   $("out").hidden = false;
+}
+
+// Several requirements files under other names and nothing else to check: the page doesn't guess which one is the
+// project's (as `wheelgap DIR` doesn't), so it lists them and the picker checks the one chosen.
+function chooseFile(files) {
+  state.lockfile = null;
+  state.result = null;
+  status("");
+  $("go").disabled = false;
+  $("out").hidden = false;
+  const names = files.map((l) => l.path);
+  const some = `${names.slice(0, 8).join(", ")}${names.length > 8 ? `, and ${names.length - 8} more` : ""}`;
+  $("verdict").textContent = "Pick the file to check";
+  $("verdict-detail").textContent = names.length === 1
+    ? `${state.repo.owner}/${state.repo.name} has no lockfile the page reads by itself, only ${names[0]}, which by its name is for development, tests, docs or examples, so it isn't checked on its own. To check it anyway, pick it under "Lockfile" below.`
+    : `${state.repo.owner}/${state.repo.name} has no lockfile the page reads by itself, but ${names.length} requirements files: ${some}. Which one holds the project's dependencies can't be told from its name, so pick it under "Lockfile" below.`;
+  // A link named a file this page can't check: say so, as the verdict would after a fallback.
+  $("alerts").replaceChildren(...(state.fileNotice ? [el("p", { class: "alert warn", text: `${state.fileNotice} Pick a file to check instead.` })] : []));
+  renderSetup();
+  hideResultSections(true, true);
 }
 
 function noLockfile() {
@@ -373,14 +397,17 @@ function renderSetup() {
   }
 
   const locks = state.plan.lockfiles;
-  $("lock-pick").hidden = locks.length < 2;
-  $("lockfile").replaceChildren(...locks.map((l) => el("option", { value: l.path, selected: l.path === state.lockfile, text: l.offline ? l.path : `${l.path} (looks packages up on PyPI)` })));
+  $("lock-pick").hidden = locks.length < 2 && Boolean(state.lockfile); // a chooser has a picker, even for one file
+  $("lockfile").replaceChildren(
+    ...(state.lockfile ? [] : [el("option", { value: "", disabled: true, selected: true, text: "Choose a file…" })]),
+    ...locks.map((l) => el("option", { value: l.path, selected: l.path === state.lockfile, text: l.offline ? l.path : `${l.path} (looks packages up on PyPI)` })),
+  );
   $("lockfile").onchange = () => { state.lockfile = $("lockfile").value; state.auto = false; state.fileNotice = null; runCheck(); };
 
   const repoUrl = `https://github.com/${state.repo.owner}/${state.repo.name}/blob/${encodeURIComponent(state.ref || "HEAD")}/`;
   const link = (path, line) => el("a", { href: `${repoUrl}${path.split("/").map(encodeURIComponent).join("/")}${line ? `#L${line}` : ""}`, rel: "noopener" }, el("code", { text: `${path}${line ? `:${line}` : ""}` }));
   const items = [
-    el("li", {}, "Lockfile: ", link(state.lockfile)),
+    state.lockfile ? el("li", {}, "Lockfile: ", link(state.lockfile)) : el("li", { text: "Lockfile: none picked yet." }),
     ...d.found.map((f) => el("li", {}, `${f.kind === "target" ? "Platform" : "Python"} ${f.value}, from `, link(f.path, f.line), ` (${f.source})`)),
     ...d.unreadable.map((u) => el("li", {}, "Not read: ", link(u.path, u.line), ` (${u.reason})`)),
   ];
@@ -469,7 +496,7 @@ function renderNext() {
   const r = state.result;
   $("cli").textContent = cliCommand(r, state.pythons, state.platforms);
   // The link names the lockfile only when a visit with the repo alone would start from another one.
-  $("badge-md").textContent = badgeMarkdown(state.repo, r.lockfile, pickLockfile(state.plan.lockfiles.filter((l) => !l.added), null)?.path ?? null);
+  $("badge-md").textContent = badgeMarkdown(state.repo, r.lockfile, autoPick(state.plan.lockfiles.filter((l) => !l.added), null).lock?.path ?? null);
   const caveats = [
     "A wheel on PyPI means pip and uv install it without compiling; it doesn't test that the package works there.",
     r.looked_up

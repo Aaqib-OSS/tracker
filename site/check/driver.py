@@ -100,6 +100,39 @@ def _skipped_folder(parts: tuple[str, ...]) -> bool:
     return any(p.startswith(".") or p in suggest_targets._SKIP_DIRS for p in parts)
 
 
+# Text files in a requirements/ folder that aren't requirements files, by the start of their name (any case), as
+# wheelgap's `wheelgap DIR` leaves them out (sources._NOT_REQUIREMENTS, after 0.13.0).
+_NOT_REQUIREMENTS = (
+    *("constraint", "readme", "license", "licence", "copying", "notice", "changelog", "changes"),
+    *("history", "authors", "contributing", "todo", "notes"),
+)
+
+
+def _is_extra_requirements(pp: PurePosixPath) -> bool:
+    """A *.txt file whose name or folder marks it as a requirements file, under a name other than requirements.txt:
+    requirements*.txt, *-requirements.txt, *_requirements.txt, or a .txt in a folder named requirements (not
+    constraints, README.txt and the like). Case-sensitive, as wheelgap reads a file as requirements only by `.txt`."""
+    name = pp.name
+    if not name.endswith(".txt") or name in LOCKFILES or name.lower().startswith(_NOT_REQUIREMENTS):
+        return False
+    if name.startswith("requirements") or name.endswith(("-requirements.txt", "_requirements.txt")):
+        return True
+    return len(pp.parts) >= 2 and pp.parts[-2] == "requirements"
+
+
+def _lockfile_sort_key(path: str) -> tuple[int, int, int, int, str]:
+    """Every exactly-named file first, as before: shallowest, then in wheelgap's order, a pyproject.toml after the
+    lockfiles in its folder. Requirements files under other names come after all of those, shallowest then by name:
+    which one holds the project's dependencies can't be told from the name, so the page never picks one of them over
+    another file, and with several it asks (autoPick() in check-logic.mjs), as `wheelgap DIR` lists them."""
+    pp = PurePosixPath(path)
+    if pp.name in LOCKFILES:
+        return (0, path.count("/"), 0, LOCKFILES.index(pp.name), path)
+    if pp.name == "pyproject.toml":
+        return (0, path.count("/"), 1, 0, path)
+    return (1, path.count("/"), 0, 0, path)
+
+
 def plan(paths_json: str) -> str:
     """The files to fetch, from the repo tree's paths (blobs only): lockfiles, workflows, Dockerfiles and the root
     .python-version. Lockfiles come shallowest first, then in wheelgap's order, so the first is the one
@@ -114,26 +147,23 @@ def plan(paths_json: str) -> str:
             continue
         if _skipped_folder(folders):
             continue
-        if pp.name in LOCKFILES or pp.name == "pyproject.toml":
+        if pp.name in LOCKFILES or pp.name == "pyproject.toml" or _is_extra_requirements(pp):
             lockfiles.append(p)
         kind = suggest_targets._container_kind(pp.name)
         if kind == "file":
             dockerfiles.append(p)
         elif kind == "template":
             templates.append(p)
-    # A pyproject.toml comes after the lockfiles in the same folder, so a uv.lock next to one is still picked first.
-    lockfiles.sort(
-        key=lambda p: (
-            p.count("/"),
-            PurePosixPath(p).name not in LOCKFILES,
-            LOCKFILES.index(PurePosixPath(p).name) if PurePosixPath(p).name in LOCKFILES else 0,
-            p,
-        )
-    )
+    # A pyproject.toml comes after the lockfiles in the same folder; requirements files under other names come last.
+    lockfiles.sort(key=_lockfile_sort_key)
     dockerfiles.sort(key=lambda p: (p.count("/"), p))
     return json.dumps(
         {
-            "lockfiles": [{"path": p, "offline": _reads_offline(p)} for p in lockfiles[:MAX_LOCKFILES]],
+            "lockfiles": [
+                {"path": p, "offline": _reads_offline(p)}
+                | ({"other": True} if _is_extra_requirements(PurePosixPath(p)) else {})
+                for p in lockfiles[:MAX_LOCKFILES]
+            ],
             "workflows": sorted(workflows),
             "dockerfiles": dockerfiles[:MAX_DOCKERFILES],
             "more_dockerfiles": max(0, len(dockerfiles) - MAX_DOCKERFILES),

@@ -98,6 +98,34 @@ export function pickLockfile(lockfiles, dir) {
   return lockfiles.find(inDir) ?? lockfiles[0] ?? null;
 }
 
+// Words in a requirements file's name (requirements-dev.txt, requirements/test.txt) or its folders that say its
+// packages are for the tests, the docs, an example or development, not the project itself: wheelgap's _SIDE_WORDS
+// (src/wheelgap/sources.py on main, after 0.13.0), split the way its _is_side() splits a name.
+const SIDE_WORDS = new Set([
+  "test", "tests", "testing", "example", "examples", "sample", "samples", "demo", "demos", "doc", "docs",
+  "bench", "benchmark", "benchmarks", "fixtures", "templates",
+  "dev", "develop", "development", "lint", "ci", "typing",
+]);
+export function isSideFile(path) {
+  const parts = String(path).split("/");
+  const base = parts.pop();
+  const stem = base.includes(".") ? base.slice(0, base.lastIndexOf(".")) : base;
+  return [...parts, stem].some((part) => part.toLowerCase().split(/[^a-z0-9]+/).some((word) => SIDE_WORDS.has(word)));
+}
+
+// The file the page checks by itself: pickLockfile()'s pick among the exactly-named files, as before; with none of
+// those, the only requirements file under another name (`other`, from plan()), unless its name says it's for
+// development, tests, docs or examples (isSideFile), which `wheelgap DIR` never checks on its own. With several of
+// those, or that one side file, it picks none and returns them in `choose`: which one holds the project's
+// dependencies can't be told from a name, so, like `wheelgap DIR`, the page lists them and the visitor picks.
+// {lock: null, choose: null} when there's nothing at all.
+export function autoPick(lockfiles, dir) {
+  const named = lockfiles.filter((l) => !l.other);
+  if (named.length) return { lock: pickLockfile(named, dir), choose: null };
+  if (lockfiles.length === 1 && !isSideFile(lockfiles[0].path)) return { lock: lockfiles[0], choose: null };
+  return { lock: null, choose: lockfiles.length ? lockfiles : null };
+}
+
 // wheelgap 0.13.0's sources.file_kind, which picks a file's reader by its name: the reader, or null for a name it
 // doesn't read (and a pip report's .json, which this page doesn't offer). Re-check it when worker.mjs's pin changes:
 // later releases read more names (a PEP 723 script's *.py.lock), which 0.13.0 refuses as "don't know how to read".
@@ -124,25 +152,29 @@ export function isReadableFile(path) {
 }
 
 // Pick the file to check when a link or query may have named one explicitly.
-// Returns { lock, lockfiles, auto, notice }. `lockfiles` has the named file added at the end, marked `added` (so the
+// Returns { lock, lockfiles, auto, notice, choose }. `lockfiles` has the named file added at the end, marked `added` (so the
 // repo's own automatic pick stays first, and the badge never treats it as the default) when it exists in the repo tree and is readable. `notice` says why a named file
 // wasn't checked; the page adds which file it checked instead, since that can still change (withoutUnreadable).
+// With no file named, or one that can't be checked, the page's own pick is autoPick()'s, so `choose` lists the files
+// to ask between when it picks none (lock null); a named file that is checked has choose null.
 export function pickRequestedFile(lockfiles, requested, inTree, dir) {
   if (!requested) {
-    return { lock: pickLockfile(lockfiles, dir), lockfiles, auto: true, notice: null };
+    const pick = autoPick(lockfiles, dir);
+    return { lock: pick.lock, lockfiles, auto: true, notice: null, choose: pick.choose };
   }
   const existing = lockfiles.find((l) => l.path === requested);
   if (existing) {
-    return { lock: existing, lockfiles, auto: false, notice: null };
+    return { lock: existing, lockfiles, auto: false, notice: null, choose: null };
   }
   if (inTree && isReadableFile(requested)) {
     const added = { path: requested, offline: OFFLINE_KINDS.includes(fileKind(requested)), added: true };
-    return { lock: added, lockfiles: [...lockfiles, added], auto: false, notice: null };
+    return { lock: added, lockfiles: [...lockfiles, added], auto: false, notice: null, choose: null };
   }
   const notice = !isReadableFile(requested)
     ? `${requested} isn't a file this page reads.`
     : `${requested} wasn't found in this repository.`;
-  return { lock: pickLockfile(lockfiles, dir), lockfiles, auto: true, notice };
+  const pick = autoPick(lockfiles, dir);
+  return { lock: pick.lock, lockfiles, auto: true, notice, choose: pick.choose };
 }
 
 // After wheelgap couldn't read `failed`: the repo's other files to pick from instead, or null to report the error.

@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  parseRepo, inputHint, rawUrl, pickLockfile, pickRequestedFile, isReadableFile, fileKind, toQuery, fromQuery, sortPythons, freeThreaded, fixFor, rowsFor, headline,
+  parseRepo, inputHint, rawUrl, pickLockfile, autoPick, isSideFile, pickRequestedFile, isReadableFile, fileKind, toQuery, fromQuery, sortPythons, freeThreaded, fixFor, rowsFor, headline,
   cliCommand, fixPrompt, verdictText, nextSteps, validRef, labVerdict, labFor, canonicalName, gapWheelFor,
   gapWheelFixText, withoutUnreadable, unreadableReason, tileText, missedText, badgeMarkdown, trimProject, trimReleases,
 } from "../../site/check/check-logic.mjs";
@@ -79,8 +79,8 @@ test("parseRepo refuses what isn't a repo", () => {
 
 test("pickRequestedFile checks a named file, adds a readable one from the tree, or says why it fell back", () => {
   const locks = [{ path: "pyproject.toml", offline: false }, { path: "uv.lock", offline: true }];
-  assert.deepEqual(pickRequestedFile(locks, null, false, null), { lock: locks[0], lockfiles: locks, auto: true, notice: null });
-  assert.deepEqual(pickRequestedFile(locks, "uv.lock", true, null), { lock: locks[1], lockfiles: locks, auto: false, notice: null });
+  assert.deepEqual(pickRequestedFile(locks, null, false, null), { lock: locks[0], lockfiles: locks, auto: true, notice: null, choose: null });
+  assert.deepEqual(pickRequestedFile(locks, "uv.lock", true, null), { lock: locks[1], lockfiles: locks, auto: false, notice: null, choose: null });
   const added = pickRequestedFile(locks, "requirements/default.txt", true, null);
   assert.deepEqual(added.lock, { path: "requirements/default.txt", offline: false, added: true });
   assert.deepEqual(added.lockfiles.map((l) => l.path), ["pyproject.toml", "uv.lock", "requirements/default.txt"]);
@@ -96,7 +96,7 @@ test("pickRequestedFile checks a named file, adds a readable one from the tree, 
   assert.equal(missing.auto, true);
   assert.equal(missing.notice, "requirements/gone.txt wasn't found in this repository.");
   assert.equal(pickRequestedFile(locks, "setup.cfg", true, null).notice, "setup.cfg isn't a file this page reads.");
-  assert.deepEqual(pickRequestedFile([], "setup.cfg", true, null), { lock: null, lockfiles: [], auto: true, notice: "setup.cfg isn't a file this page reads." });
+  assert.deepEqual(pickRequestedFile([], "setup.cfg", true, null), { lock: null, lockfiles: [], auto: true, notice: "setup.cfg isn't a file this page reads.", choose: null });
   for (const yes of ["uv.lock", "a/Pipfile.lock", "pixi.lock", "pylock.dev.toml", "uv-py312.lock", "requirements-dev.lock", "x/reqs.in", "pyproject.toml"]) {
     assert.equal(isReadableFile(yes), true, yes);
   }
@@ -106,6 +106,20 @@ test("pickRequestedFile checks a named file, adds a readable one from the tree, 
     assert.equal(isReadableFile(no), false, no);
   }
   assert.equal(pickRequestedFile(locks, "scripts/tool.py.lock", true, null).notice, "scripts/tool.py.lock isn't a file this page reads.");
+});
+
+test("pickRequestedFile's own pick is autoPick()'s: several requirements files under other names are asked about", () => {
+  const other = (path) => ({ path, offline: false, other: true });
+  const several = [other("requirements/base.txt"), other("requirements/docs.txt")];
+  // No file named, and a named file the page can't check: no guess, the files to ask between, and the notice.
+  assert.deepEqual(pickRequestedFile(several, null, false, null), { lock: null, lockfiles: several, auto: true, notice: null, choose: several });
+  assert.deepEqual(pickRequestedFile(several, "README.md", true, null), { lock: null, lockfiles: several, auto: true, notice: "README.md isn't a file this page reads.", choose: several });
+  assert.deepEqual(pickRequestedFile([other("requirements-dev.txt")], null, false, null).choose, [other("requirements-dev.txt")]);
+  // A named one is checked, listed or added.
+  assert.equal(pickRequestedFile(several, "requirements/docs.txt", false, null).choose, null);
+  assert.equal(pickRequestedFile(several, "requirements/docs.txt", false, null).lock.path, "requirements/docs.txt");
+  const added = pickRequestedFile(several, "deps/prod.txt", true, null);
+  assert.deepEqual([added.lock.path, added.choose], ["deps/prod.txt", null]);
 });
 
 test("a named file is checked offline exactly when wheelgap reads it as a lockfile that lists its files", () => {
@@ -192,6 +206,43 @@ test("an unreadable pyproject.toml the page picked itself gives way to the repo'
   assert.equal(withoutUnreadable([locks[0]], "pyproject.toml", true), null); // nothing else to check
   const nested = [{ path: "a/pyproject.toml", offline: false }, { path: "a/b/pyproject.toml", offline: false }];
   assert.deepEqual(withoutUnreadable(nested, "a/pyproject.toml", true), [nested[1]]);
+  // Celery-style repo: an auto-picked pyproject.toml with no [project] table moves on to its requirements files, and
+  // with several of those the page asks which one (autoPick), as `wheelgap DIR` lists them: none is picked by name.
+  const celery = [
+    { path: "pyproject.toml", offline: false },
+    { path: "requirements/default.txt", offline: false, other: true },
+    { path: "requirements/docs.txt", offline: false, other: true },
+  ];
+  const rest = withoutUnreadable(celery, "pyproject.toml", true);
+  assert.deepEqual(autoPick(rest, null), { lock: null, choose: rest });
+});
+
+test("autoPick keeps the exactly-named files' pick, checks a lone other requirements file, and asks between several", () => {
+  const other = (path) => ({ path, offline: false, other: true });
+  const named = [{ path: "pyproject.toml", offline: false }, { path: "backend/uv.lock", offline: true }];
+  // Exactly-named files decide as pickLockfile() does, wherever the others are (they come last in plan() anyway).
+  assert.equal(autoPick([...named, other("requirements-dev.txt")], null).lock.path, "pyproject.toml");
+  assert.equal(autoPick([named[1], other("requirements-dev.txt")], null).lock.path, "backend/uv.lock");
+  assert.equal(autoPick([...named, other("backend/requirements-prod.txt")], "backend").lock.path, "backend/uv.lock");
+  assert.equal(autoPick([other("requirements/base.txt")], null).lock.path, "requirements/base.txt");
+  // Several: none, whatever their names or the folder a URL named.
+  const several = [other("requirements/base.txt"), other("requirements/docs.txt"), other("requirements/local.txt")];
+  assert.deepEqual(autoPick(several, null), { lock: null, choose: several });
+  assert.deepEqual(autoPick(several, "requirements"), { lock: null, choose: several });
+  assert.deepEqual(autoPick([], null), { lock: null, choose: null });
+});
+
+test("a lone requirements file named for development, tests, docs or examples is offered, never checked on its own", () => {
+  // As `wheelgap DIR` on main (_is_side): it lists such a file and never checks it by itself.
+  const other = (path) => ({ path, offline: false, other: true });
+  for (const path of ["requirements-dev.txt", "requirements/test.txt", "requirements_docs.txt", "requirements/ci.txt", "examples/requirements-prod.txt", "requirements-Typing.txt"]) {
+    assert.deepEqual(autoPick([other(path)], null), { lock: null, choose: [other(path)] }, path);
+  }
+  for (const path of ["requirements/base.txt", "requirements-prod.txt", "requirements/local.txt", "requirements-devices.txt", "requirements/latest.txt"]) {
+    assert.equal(autoPick([other(path)], null).lock?.path, path, path);
+  }
+  assert.equal(isSideFile("requirements-dev.txt"), true);
+  assert.equal(isSideFile("requirements/base.txt"), false);
 });
 
 test("a file with nothing to check is no answer; one whose packages were skipped or aren't installed is", () => {
