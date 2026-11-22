@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   parseRepo, inputHint, rawUrl, pickLockfile, autoPick, isSideFile, pickRequestedFile, isReadableFile, fileKind, toQuery, fromQuery, sortPythons, freeThreaded, fixFor, rowsFor, headline,
-  cliCommand, fixPrompt, verdictText, nextSteps, validRef, labVerdict, labFor, canonicalName, gapWheelFor,
+  cliCommand, packageCliCommand, projectNameFromMetadata, metadataFiles, fixPrompt, verdictText, nextSteps, validRef, labVerdict, labFor, canonicalName, gapWheelFor,
   gapWheelFixText, withoutUnreadable, unreadableReason, tileText, missedText, badgeMarkdown, trimProject, trimReleases,
 } from "../../site/check/check-logic.mjs";
 
@@ -368,6 +368,69 @@ test("rowsFor lists one Python's gaps, most first; headline counts distinct pack
 test("the CLI command and the fix prompt reproduce the check", () => {
   assert.equal(cliCommand(result, ["3.14t", "3.14"], ["linux-x86_64", "win-arm64"]), "uvx wheelgap uv.lock -p 3.14,3.14t -t linux-x86_64,win-arm64");
   assert.equal(cliCommand({ lockfile: "my app/uv.lock" }, ["3.14"], ["linux-x86_64"]), "uvx wheelgap 'my app/uv.lock' -p 3.14 -t linux-x86_64");
+  assert.equal(packageCliCommand("httpie", ["3.14", "3.13"], ["linux-x86_64", "win-arm64"]), "uvx wheelgap --deps httpie -p 3.13,3.14 -t linux-x86_64,win-arm64");
+  assert.equal(packageCliCommand("httpie; rm -rf /", ["3.14"], ["linux-x86_64"]), null);
+});
+
+test("projectNameFromMetadata reads plain names from setup.cfg and pyproject.toml and rejects dynamic or invalid ones", () => {
+  assert.equal(projectNameFromMetadata("setup.cfg", "[metadata]\nname = httpie\nversion = 3.2.4\n"), "httpie");
+  assert.equal(projectNameFromMetadata("setup.cfg", "[metadata]\nname = attr: pkg.__name__\n"), null);
+  assert.equal(projectNameFromMetadata("setup.cfg", "[metadata]\nname = file: NAME.txt\n"), null);
+  assert.equal(projectNameFromMetadata("setup.cfg", "[metadata]\nname = bad name!\n"), null);
+  assert.equal(projectNameFromMetadata("setup.cfg", "[options]\nname = wrong-section\n"), null);
+  assert.equal(projectNameFromMetadata("pyproject.toml", '[project]\nname = "x"\ndynamic = ["dependencies"]\n'), "x");
+  assert.equal(projectNameFromMetadata("pyproject.toml", "[project]\nname = 'my_pkg'\n"), "my_pkg");
+  assert.equal(projectNameFromMetadata("pyproject.toml", '[tool.ruff]\nname = "nope"\n'), null);
+  assert.equal(projectNameFromMetadata("setup.py", 'setup(name="ignored")\n'), null);
+});
+
+test("projectNameFromMetadata reads a setup.cfg as configparser does and a pyproject.toml's headers as TOML does", () => {
+  const cfg = (text) => projectNameFromMetadata("setup.cfg", text);
+  assert.equal(cfg("[metadata]\nName: httpie\n"), "httpie"); // keys are case-insensitive; ":" works like "="
+  assert.equal(cfg("[metadata] # comment\nname = httpie\n"), "httpie");
+  assert.equal(cfg("[metadata]\n  name = httpie\n"), "httpie"); // an indented first key is still a key
+  // Section names are case-sensitive, and an indented line after a key continues that key's value.
+  assert.equal(cfg("[METADATA]\nname = httpie\n"), null);
+  assert.equal(cfg("[ metadata ]\nname = httpie\n"), null);
+  assert.equal(cfg("[metadata]\ndescription = a tool\n  name = other\n"), null);
+  assert.equal(cfg("[metadata]\nname = httpie # inline comments aren't stripped\n"), null);
+  assert.equal(cfg("[metadata]\nname =\n  httpie\n"), null);
+  const toml = (text) => projectNameFromMetadata("pyproject.toml", text);
+  assert.equal(toml('[project] # the package\nname = "httpie"\n'), "httpie");
+  assert.equal(toml('[ project ]\nname = "httpie"\n'), "httpie");
+  // A name under any other table, an array of tables included, is never [project]'s.
+  assert.equal(toml('[build-system]\nrequires = ["setuptools"]\n[[tool.uv.index]] # torch\nname = "pytorch"\n'), null);
+  assert.equal(toml('[project]\nversion = "1"\n[tool.x] # c\nname = "nope"\n'), null);
+  assert.equal(toml('["project"]\nname = "unsure"\n'), null);
+});
+
+test("projectNameFromMetadata refuses a value configparser continues and a multi-line TOML string", () => {
+  const cfg = (text) => projectNameFromMetadata("setup.cfg", text);
+  // configparser reads "httpie\nevil": an indented line after the key continues it, blank lines in between or not.
+  assert.equal(cfg("[metadata]\nname = httpie\n  evil\n"), null);
+  assert.equal(cfg("[metadata]\nname = httpie\n\n  more\n"), null);
+  assert.equal(cfg("[metadata]\nname = httpie\n# c\nversion = 1\n"), "httpie");
+  const toml = (text) => projectNameFromMetadata("pyproject.toml", text);
+  // A "name = ..." inside a multi-line string isn't a key, and the reader doesn't track strings: it refuses.
+  assert.equal(toml('[project]\ndescription = """\nname = "evil"\n"""\nname = "real"\n'), null);
+  assert.equal(toml("[project]\ndescription = '''\nname = \"evil\"\n'''\nname = \"real\"\n"), null);
+  assert.equal(toml('[project]\nname = "real"\ndescription = """x"""\n'), "real");
+});
+
+test("the project name is read from a lone root pyproject.toml, then a root setup.cfg, and only then", () => {
+  const pyproject = [{ path: "pyproject.toml", offline: false }];
+  assert.deepEqual(metadataFiles([], ["setup.cfg", "setup.py"]), ["setup.cfg"]);
+  assert.deepEqual(metadataFiles([], ["setup.py"]), []);
+  // The usual setuptools layout: a pyproject.toml with only [build-system], and the name in setup.cfg.
+  assert.deepEqual(metadataFiles(pyproject, ["pyproject.toml", "setup.cfg"]), ["pyproject.toml", "setup.cfg"]);
+  assert.deepEqual(metadataFiles(pyproject, ["pyproject.toml"]), ["pyproject.toml"]);
+  // Another file to check, or a pyproject.toml that isn't the root's: no package fallback.
+  assert.deepEqual(metadataFiles([...pyproject, { path: "requirements.txt", offline: false }], ["setup.cfg"]), []);
+  assert.deepEqual(metadataFiles([{ path: "app/pyproject.toml", offline: false }], ["setup.cfg"]), []);
+  assert.deepEqual(metadataFiles([], ["pkg/setup.cfg"]), []);
+});
+
+test("fixPrompt reproduces the check", () => {
   const fixes = { "a==1.0": { found: { "3.14 win-arm64": "1.1" }, loses: [] }, "b==2.0": { found: {}, loses: [] } };
   const prompt = fixPrompt("o/r", result, fixes, ["3.14"], ["linux-x86_64", "win-arm64"]);
   assert.match(prompt, /- a 1\.0 -> 1\.1\n/);

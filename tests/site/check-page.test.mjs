@@ -295,6 +295,99 @@ test("the badge is a small static image on the page's own origin, offered as Mar
   assert.doesNotMatch(page, /innerHTML/);
 });
 
+test("noLockfile offers the PyPI package command when setup.cfg names one, and keeps the plain verdict otherwise", () => {
+  const source = read("check.mjs");
+  const fb = source.match(/^function showPackageFallback\(.*?^}$/ms);
+  const nl = source.match(/^function noLockfile\(.*?^}$/ms);
+  assert.ok(fb && nl, "showPackageFallback and noLockfile are in check.mjs");
+
+  const run = (projectName) => {
+    const made = new Map();
+    const element = (key) => {
+      if (!made.has(key)) {
+        made.set(key, { hidden: null, textContent: "", children: [], replaceChildren(...kids) { this.children = kids; } });
+      }
+      return made.get(key);
+    };
+    const el = (tag, attrs = {}, ...kids) => ({ tag, attrs, kids });
+    const state = {
+      repo: { owner: "httpie", name: "cli" },
+      projectName,
+      truncated: false,
+      pythons: [],
+      platforms: [],
+      detected: { pythons: ["3.13"], platforms: ["linux-x86_64", "win-arm64"] },
+    };
+    const noLockfile = new Function(
+      "$", "el", "state", "NAMES", "sortPythons", "packageCliCommand", "canonicalName", "copy", "hideResultSections", "fetch", "location",
+      `${fb[0]}\n${nl[0]}\nreturn noLockfile;`,
+    )(
+      element, el, state, Object.fromEntries(checkLogic.PLATFORMS), checkLogic.sortPythons,
+      checkLogic.packageCliCommand, checkLogic.canonicalName, () => {}, () => {}, undefined, { href: "https://wheelgap.github.io/tracker/check/" },
+    );
+    noLockfile();
+    return element;
+  };
+
+  const withPkg = run("httpie");
+  assert.equal(withPkg("verdict").textContent, "No lockfile found, but this looks like the PyPI package httpie.");
+  assert.equal(withPkg("alerts").children[0].tag, "pre");
+  assert.equal(
+    withPkg("alerts").children[0].kids[0].attrs.text,
+    "uvx wheelgap --deps httpie -p 3.13 -t linux-x86_64,win-arm64",
+  );
+
+  const withoutPkg = run(null);
+  assert.equal(withoutPkg("verdict").textContent, "No lockfile found");
+  assert.doesNotMatch(withoutPkg("verdict-detail").textContent, /Run uvx wheelgap in a checkout/);
+  assert.deepEqual(withoutPkg("alerts").children, []);
+});
+
+test("the package fallback goes under the error when the lone root pyproject.toml can't be read", () => {
+  const source = read("check.mjs");
+  const fn = source.match(/^function onResult\(.*?^}$/ms);
+  assert.ok(fn, "onResult is in check.mjs");
+  const run = ({ lockfile = "pyproject.toml", projectName = "httpie", kind = "source", lockfiles = [{ path: lockfile, offline: false }] } = {}) => {
+    const calls = [];
+    const made = new Map();
+    const $ = (id) => (made.has(id) ? made.get(id) : made.set(id, { hidden: false, textContent: "" }).get(id));
+    const state = { lockfile, projectName, auto: true, plan: { lockfiles }, repo: { dir: null }, detected: { unreadable: [] } };
+    const onResult = new Function(
+      "state", "$", "status", "needsIndex", "unreadableReason", "withoutUnreadable", "privatePyprojectReason", "autoPick", "chooseFile",
+      "runCheck", "showPackageFallback", `${fn[0]}; return onResult;`,
+    )(
+      state, $, (text) => calls.push(["status", text]), () => calls.push(["needsIndex"]), checkLogic.unreadableReason,
+      checkLogic.withoutUnreadable, checkLogic.privatePyprojectReason, checkLogic.autoPick, (files) => calls.push(["choose", files]),
+      () => calls.push(["runCheck"]), (name) => calls.push(["fallback", name]),
+    );
+    onResult({ kind, error: "pyproject.toml: [project] dependencies is dynamic (set by the build backend), so wheelgap can't read it" });
+    return calls;
+  };
+  const calls = run();
+  assert.match(calls[0][1], /^Wheelgap couldn't read pyproject\.toml: /); // capitalised with no named-file notice before it
+  assert.deepEqual(calls[1], ["fallback", "httpie"]);
+  assert.deepEqual(run({ projectName: null }).map(([c]) => c), ["status"]);
+  // A pyproject.toml with another file to move on to is replaced by it, not answered with the package.
+  assert.deepEqual(run({ lockfiles: [{ path: "pyproject.toml" }, { path: "docs/requirements.txt" }] }), [["runCheck"]]);
+  assert.deepEqual(run({ lockfile: "requirements.txt" }).map(([c]) => c), ["status"]);
+});
+
+test("with no lockfile, the package command uses this repo's targets, never the last repo's", () => {
+  const source = read("check.mjs");
+  const fn = source.match(/^function onLoaded\(.*?^}$/ms);
+  assert.ok(fn, "onLoaded is in check.mjs");
+  const seen = [];
+  const state = { repo: { owner: "httpie", name: "cli", dir: null }, query: null, pythons: ["3.12"], platforms: ["macos-x86_64"] };
+  const onLoaded = new Function(
+    "state", "pickRequestedFile", "sortPythons", "NAMES", "status", "$", "noLockfile", "runCheck", `${fn[0]}; return onLoaded;`,
+  )(
+    state, checkLogic.pickRequestedFile, checkLogic.sortPythons, Object.fromEntries(checkLogic.PLATFORMS), () => {},
+    () => ({ disabled: false }), () => seen.push([state.pythons, state.platforms]), () => seen.push("runCheck"),
+  );
+  onLoaded({ plan: { lockfiles: [] }, detected: { pythons: ["3.14"], platforms: ["linux-x86_64", "win-arm64"] }, projectName: "httpie" });
+  assert.deepEqual(seen, [[["3.14"], ["linux-x86_64", "win-arm64"]]]);
+});
+
 // onLoaded() and onResult() with the worker and the DOM stood in: `chooseFile` and `runCheck` record what they're
 // asked to do.
 function pickPage(lockfiles, { query = null, lockfile = null } = {}) {
@@ -356,7 +449,22 @@ test("with several requirements files under other names and nothing else, the pa
   readme.loaded();
   assert.deepEqual(readme.calls, [["choose", ["requirements/default.txt", "requirements/docs.txt"]]]);
   assert.equal(readme.state.fileNotice, "README.md isn't a file this page reads.");
-  assert.match(read("check.mjs"), /\$\("alerts"\)\.replaceChildren\(\.\.\.\(state\.fileNotice \? \[el\("p", \{ class: "alert warn", text: `\$\{state\.fileNotice\} Pick a file to check instead\.` \}\)\] : \[\]\)\);/);
+  // chooseFile() itself: the named-file notice first, then (when the repo names its PyPI package) the --deps command.
+  const chooseSrc = read("check.mjs").match(/^function chooseFile\(.*?^}$/ms)[0];
+  const shown = new Map();
+  const box = (id) => (shown.has(id) ? shown.get(id) : shown.set(id, { hidden: true, textContent: "", replaceChildren(...kids) { this.children = kids; } }).get(id));
+  const chooseWith = (st) => new Function(
+    "state", "$", "el", "status", "packageCliCommand", "renderSetup", "hideResultSections", `${chooseSrc}; return chooseFile;`,
+  )(st, box, (tag, attrs = {}, ...kids) => ({ tag, attrs, kids }), () => {}, checkLogic.packageCliCommand, () => {}, () => {});
+  const files = [{ path: "requirements/base.txt" }, { path: "requirements/docs.txt" }];
+  chooseWith({ repo: { owner: "o", name: "r" }, fileNotice: "README.md isn't a file this page reads.", projectName: "httpie", pythons: ["3.14"], platforms: ["linux-x86_64"] })(files);
+  const alerts = box("alerts").children;
+  assert.equal(alerts.length, 2);
+  assert.deepEqual(alerts[0], { tag: "p", attrs: { class: "alert warn", text: "README.md isn't a file this page reads. Pick a file to check instead." }, kids: [] });
+  assert.equal(alerts[1].kids[0], "Or check the published package httpie's dependencies: ");
+  assert.deepEqual(alerts[1].kids[1], { tag: "code", attrs: { text: "uvx wheelgap --deps httpie -p 3.14 -t linux-x86_64" }, kids: [] });
+  chooseWith({ repo: { owner: "o", name: "r" }, fileNotice: null, projectName: null, pythons: ["3.14"], platforms: ["linux-x86_64"] })(files);
+  assert.deepEqual(box("alerts").children, []);
   const nested = pickPage([...celery.slice(1), { path: "backend/uv.lock", offline: true }]);
   nested.loaded();
   assert.deepEqual(nested.calls, [["runCheck", "backend/uv.lock"]]);
@@ -641,5 +749,19 @@ test("an all-private root pyproject.toml gives way to no requirements file its s
   assert.equal(page.posts.length, 1, "no fallback request");
   assert.equal(page.state.lockfile, "pyproject.toml");
   assert.match(page.$("verdict").textContent, /pyproject.toml wasn't checked/);
+});
+
+test("the package fallback and the chooser: a named file's notice comes first, and the chooser offers --deps", () => {
+  const source = read("check.mjs");
+  // showPackageFallback() puts the named-file notice before the command; chooseFile() adds the package command.
+  assert.match(source, /\$\("alerts"\)\.replaceChildren\(\.\.\.notice, \.\.\.items\);/);
+  assert.match(source, /const cmd = state\.projectName \? packageCliCommand\(state\.projectName, state\.pythons, state\.platforms\) : null;/);
+  // noLockfile() keeps #226's notice prefix and has no "Run uvx wheelgap in a checkout" sentence.
+  const nl = source.match(/^function noLockfile\(.*?^}$/ms)[0];
+  assert.match(nl, /\$\{prefix\}The repo check reads/);
+  assert.doesNotMatch(nl, /Run uvx wheelgap in a checkout/);
+  // The worker reads a lone root pyproject.toml's name even beside requirements files under other names (#229).
+  assert.match(read("worker.mjs"), /metadataFiles\(plan\.lockfiles\.filter\(\(l\) => !l\.other\), paths\)/);
+  assert.match(read("worker.mjs"), /return \{ plan, detected, truncated: Boolean\(tree\.truncated\), ref, root, fileInTree, projectName \};/);
 });
 

@@ -3,7 +3,7 @@
 
 import {
   PLATFORMS, PYTHONS, parseRepo, inputHint, pickRequestedFile, autoPick, toQuery, fromQuery, sortPythons, freeThreaded,
-  fixFor, rowsFor, headline, cliCommand, fixPrompt, verdictText, nextSteps, validRef, labVerdict, labFor, canonicalName, gapWheelFor,
+  fixFor, rowsFor, headline, cliCommand, packageCliCommand, fixPrompt, verdictText, nextSteps, validRef, labVerdict, labFor, canonicalName, gapWheelFor,
   gapWheelFixText, withoutUnreadable, unreadableReason, privatePyprojectReason, tileText, missedText, badgeMarkdown,
 } from "./check-logic.mjs";
 
@@ -69,7 +69,7 @@ const worker = new Worker(new URL("./worker.mjs", import.meta.url), { type: "mod
 let seq = 0;
 let wheelgapVersion = null;
 const state = {
-  repo: null, ref: null, root: null, plan: null, detected: null, lockfile: null, auto: false, fileNotice: null, pythons: [], platforms: [],
+  repo: null, ref: null, root: null, plan: null, detected: null, projectName: null, lockfile: null, auto: false, fileNotice: null, pythons: [], platforms: [],
   result: null, fixes: null, gapWheels: null, fixesDone: false, python: null, platform: null, showAll: false, truncated: false, lab: {},
   inputError: false,
 };
@@ -171,22 +171,23 @@ function start(repo, query = null) {
   worker.postMessage({ id: ++seq, type: "load", repo, file: query?.lockfile || repo.file || null });
 }
 
-function onLoaded({ plan, detected, truncated, ref, root, fileInTree }) {
-  Object.assign(state, { plan, detected, truncated, ref, root });
+function onLoaded({ plan, detected, truncated, ref, root, fileInTree, projectName = null }) {
+  Object.assign(state, { plan, detected, truncated, ref, root, projectName });
   const q = state.query;
   const requested = q?.lockfile || state.repo.file || null;
   const picked = pickRequestedFile(plan.lockfiles, requested, Boolean(fileInTree), state.repo.dir);
   plan.lockfiles = picked.lockfiles;
   state.auto = picked.auto; // the page's own pick, not one a link or the visitor named
   state.fileNotice = picked.notice;
+  // Set before the no-lockfile answer too: its `uvx wheelgap --deps` command uses them, never the last repo's.
+  state.pythons = sortPythons(q?.pythons?.length ? q.pythons : detected.pythons);
+  state.platforms = q?.platforms?.length ? q.platforms : detected.platforms.filter((p) => NAMES[p]);
+  if (!state.platforms.length) state.platforms = ["linux-x86_64"];
   if (!picked.lock && !picked.choose) {
     status("");
     $("go").disabled = false;
     return noLockfile();
   }
-  state.pythons = sortPythons(q?.pythons?.length ? q.pythons : detected.pythons);
-  state.platforms = q?.platforms?.length ? q.platforms : detected.platforms.filter((p) => NAMES[p]);
-  if (!state.platforms.length) state.platforms = ["linux-x86_64"];
   state.query = null;
   if (!picked.lock) return chooseFile(picked.choose);
   state.lockfile = picked.lock.path;
@@ -238,6 +239,9 @@ function onResult(result) {
   if (result.error) {
     const notice = state.fileNotice ? `${state.fileNotice} Checked ${state.lockfile} instead, and ` : "";
     status(result.kind === "source" ? `${notice}${notice ? "w" : "W"}heelgap couldn't read ${state.lockfile}: ${result.error}` : `${notice}${result.error}`, true);
+    if (result.kind === "source" && state.projectName && state.lockfile === "pyproject.toml") {
+      showPackageFallback(state.projectName);
+    }
     return;
   }
   state.result = result;
@@ -248,6 +252,44 @@ function onResult(result) {
   loadLab(result);
   keepFocus(render);
   $("out").hidden = false;
+}
+
+function showPackageFallback(packageName) {
+  const pythons = state.pythons?.length ? state.pythons : sortPythons(state.detected?.pythons || []);
+  const platforms = state.platforms?.length
+    ? state.platforms
+    : (state.detected?.platforms || []).filter((p) => NAMES[p]);
+  const cmd = packageCliCommand(packageName, pythons, platforms.length ? platforms : ["linux-x86_64"]);
+  $("out").hidden = false;
+  $("verdict").textContent = `No lockfile found, but this looks like the PyPI package ${packageName}.`;
+  $("verdict-detail").textContent = "wheelgap can check the published package's dependencies directly:";
+  const items = [];
+  if (cmd) {
+    items.push(
+      el("pre", {}, el("code", { text: cmd })),
+      el("button", { type: "button", class: "action", text: "Copy command", onclick: (e) => copy(e.currentTarget, cmd, "Command copied") }),
+    );
+  }
+  const trackerSlot = el("p", { class: "note" });
+  items.push(trackerSlot);
+  // A link named a file this page can't check: that comes first.
+  const notice = state.fileNotice ? [el("p", { class: "alert warn", text: state.fileNotice })] : [];
+  $("alerts").replaceChildren(...notice, ...items);
+  hideResultSections(true);
+  const canonical = canonicalName(packageName);
+  if (/^[a-z0-9]+(-[a-z0-9]+)*$/.test(canonical) && typeof fetch === "function") {
+    fetch(new URL(`../data/packages/${canonical}.json`, location.href), { method: "HEAD" })
+      .then((r) => {
+        if (r.ok && state.projectName === packageName) {
+          trackerSlot.replaceChildren(
+            "Or view ",
+            el("a", { href: `../p/${encodeURIComponent(canonical)}/` }, `${packageName} on the wheelgap tracker`),
+            ".",
+          );
+        }
+      })
+      .catch(() => {});
+  }
 }
 
 // Several requirements files under other names and nothing else to check: the page doesn't guess which one is the
@@ -265,16 +307,23 @@ function chooseFile(files) {
     ? `${state.repo.owner}/${state.repo.name} has no lockfile the page reads by itself, only ${names[0]}, which by its name is for development, tests, docs or examples, so it isn't checked on its own. To check it anyway, pick it under "Lockfile" below.`
     : `${state.repo.owner}/${state.repo.name} has no lockfile the page reads by itself, but ${names.length} requirements files: ${some}. Which one holds the project's dependencies can't be told from its name, so pick it under "Lockfile" below.`;
   // A link named a file this page can't check: say so, as the verdict would after a fallback.
-  $("alerts").replaceChildren(...(state.fileNotice ? [el("p", { class: "alert warn", text: `${state.fileNotice} Pick a file to check instead.` })] : []));
+  // A link named a file this page can't check: say so, as the verdict would after a fallback. And a repo that names
+  // its PyPI package (setup.cfg, pyproject.toml) can also be checked as that package.
+  const cmd = state.projectName ? packageCliCommand(state.projectName, state.pythons, state.platforms) : null;
+  $("alerts").replaceChildren(
+    ...(state.fileNotice ? [el("p", { class: "alert warn", text: `${state.fileNotice} Pick a file to check instead.` })] : []),
+    ...(cmd ? [el("p", { class: "alert" }, `Or check the published package ${state.projectName}'s dependencies: `, el("code", { text: cmd }))] : []),
+  );
   renderSetup();
   hideResultSections(true, true);
 }
 
 function noLockfile() {
+  if (state.projectName) return showPackageFallback(state.projectName);
   $("out").hidden = false;
   $("verdict").textContent = "No lockfile found";
   const prefix = state.fileNotice ? `${state.fileNotice} ` : "";
-  $("verdict-detail").textContent = `${prefix}The repo check reads a uv.lock, poetry.lock, pdm.lock, pylock.toml, Pipfile.lock, requirements.txt, pixi.lock or pyproject.toml, and ${state.repo.owner}/${state.repo.name} has none${state.truncated ? " in the part of its file list GitHub returned" : ""}. Run uvx wheelgap in a checkout for anything else.`;
+  $("verdict-detail").textContent = `${prefix}The repo check reads a uv.lock, poetry.lock, pdm.lock, pylock.toml, Pipfile.lock, requirements.txt, pixi.lock or pyproject.toml, and ${state.repo.owner}/${state.repo.name} has none${state.truncated ? " in the part of its file list GitHub returned" : ""}.`;
   for (const id of ["alerts"]) $(id).replaceChildren();
   hideResultSections(true);
 }

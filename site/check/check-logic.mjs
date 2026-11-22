@@ -344,6 +344,92 @@ export function cliCommand(result, pythons, platforms) {
   return `uvx wheelgap ${lock} -p ${sortPythons(pythons).join(",")} -t ${platforms.join(",")}`;
 }
 
+const PACKAGE_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/;
+
+// Read the published PyPI package name from a root setup.cfg ([metadata] name) or pyproject.toml ([project] name).
+// Only accepts a plain valid package name (never attr:, file:, or characters a package name can't have). Anything
+// read differently from configparser or TOML (a value continued on the next line, a quoted or dotted key) is null.
+export function projectNameFromMetadata(filename, text) {
+  if (typeof text !== "string") return null;
+  let section = null;
+  if (filename === "setup.cfg") {
+    let key = false; // a key seen in this section: an indented line after it continues its value (configparser)
+    const lines = text.split(/\r?\n/);
+    const indent = (raw) => raw.match(/^\s*/)[0].length;
+    for (let i = 0; i < lines.length; i++) {
+      const raw = lines[i];
+      const line = raw.trim();
+      if (!line || line.startsWith("#") || line.startsWith(";")) continue;
+      if (key && /^\s/.test(raw)) continue;
+      // configparser's section names are case-sensitive and run to the line's last "]"; setuptools reads [metadata].
+      const hdr = line.match(/^\[(.+)\]/);
+      if (hdr) {
+        section = hdr[1];
+        key = false;
+        continue;
+      }
+      key = true;
+      if (section === "metadata") {
+        const m = line.match(/^name\s*[=:]\s*(.*)$/i);
+        if (m) {
+          const val = m[1].trim();
+          if (/^(?:attr|file)\s*:/i.test(val)) return null;
+          // The next line that isn't blank or a comment, indented deeper than the key, continues the value
+          // ("httpie\nevil" to configparser, blank lines in between or not): not a plain name.
+          const next = lines.slice(i + 1).find((l) => l.trim() && !/^\s*[#;]/.test(l));
+          if (next !== undefined && indent(next) > indent(raw)) return null;
+          return PACKAGE_NAME.test(val) ? val : null;
+        }
+      }
+    }
+    return null;
+  }
+  if (filename === "pyproject.toml") {
+    for (const raw of text.split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || line.startsWith("#")) continue;
+      // A multi-line string isn't tracked, so a "name = ..." inside one could be read as a key: fail closed.
+      if (line.includes('"""') || line.includes("'''")) return null;
+      // [table] or [[array.of.tables]], with spaces inside the brackets and a comment after, as TOML allows.
+      const hdr = line.match(/^\[(\[?)\s*([^\[\]]*?)\s*\](\]?)\s*(?:#.*)?$/);
+      if (hdr) {
+        section = hdr[1] || hdr[3] ? `[${hdr[2]}]` : hdr[2];
+        continue;
+      }
+      if (line.startsWith("[")) {
+        section = null; // a header this doesn't read (a quoted name): nothing under it is [project]'s
+        continue;
+      }
+      if (section === "project") {
+        const m = line.match(/^name\s*=\s*(?:"([^"\\]+)"|'([^']+)')\s*(?:#.*)?$/);
+        if (m) {
+          const val = (m[1] ?? m[2]).trim();
+          return PACKAGE_NAME.test(val) ? val : null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// The root files load() reads a project name from, in order, when the page has nothing else to check: a lone root
+// pyproject.toml (it may fail to read: no [project] table, or dynamic dependencies), then a root setup.cfg. A
+// pyproject.toml with only [build-system] beside a setup.cfg is the usual setuptools layout, so both are tried.
+export function metadataFiles(lockfiles, paths) {
+  const lonePyproject = lockfiles.length === 1 && lockfiles[0].path === "pyproject.toml";
+  if (lockfiles.length && !lonePyproject) return [];
+  return [...(lonePyproject ? ["pyproject.toml"] : []), ...(paths.includes("setup.cfg") ? ["setup.cfg"] : [])];
+}
+
+// The `uvx wheelgap --deps <package>` command for a library published on PyPI.
+export function packageCliCommand(packageName, pythons, platforms) {
+  if (!PACKAGE_NAME.test(String(packageName ?? ""))) return null;
+  const parts = [`uvx wheelgap --deps ${packageName}`];
+  if (pythons?.length) parts.push(`-p ${sortPythons(pythons).join(",")}`);
+  if (platforms?.length) parts.push(`-t ${platforms.join(",")}`);
+  return parts.join(" ");
+}
+
 // Look up a fill the Python driver already matched, for display only.
 export function gapWheelFor(row, gapWheels, target) {
   return gapWheels?.cells.some((cell) => cell.name === row.name && cell.version === row.version && cell.target === target) ?? false;
