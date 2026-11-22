@@ -4,7 +4,7 @@
 import {
   PLATFORMS, PYTHONS, parseRepo, inputHint, pickRequestedFile, autoPick, toQuery, fromQuery, sortPythons, freeThreaded,
   fixFor, rowsFor, headline, cliCommand, packageCliCommand, fixPrompt, verdictText, shareText, nextSteps, validRef, labVerdict, labFor, canonicalName, gapWheelFor,
-  gapWheelFixText, withoutUnreadable, unreadableReason, privatePyprojectReason, tileText, missedText, badgeMarkdown, fixLinks,
+  gapWheelFixText, withoutUnreadable, unreadableReason, privatePyprojectReason, tileText, missedText, privateText, badgeMarkdown, fixLinks,
 } from "./check-logic.mjs";
 
 const $ = (id) => document.getElementById(id);
@@ -23,9 +23,10 @@ const SHOWN = 60;
 const LAB_SHORT = { works: "builds ✓", gil: "builds, GIL on", pure: "builds, pure Python", unsupported: "unsupported here", partial: "no compiled part", broken: "builds, won't load", fails: "won't build", slow: "too slow" };
 const LAB_LOOKUPS = 120;
 
-// The tracker's build lab results for the gap rows' packages, from its own per-package files (same origin).
+// The tracker's build lab results for the gap rows' packages, from its own per-package files (same origin). Only rows
+// the driver marked as PyPI packages (`lookup`): a private index's package name never leaves the browser, here too.
 async function loadLab(result) {
-  const names = [...new Set(result.rows.filter((r) => r.gaps.length).map((r) => canonicalName(r.name)))]
+  const names = [...new Set(result.rows.filter((r) => r.gaps.length && r.lookup).map((r) => canonicalName(r.name)))]
     .filter((n) => /^[a-z0-9]+(-[a-z0-9]+)*$/.test(n) && !(n in state.lab))
     .slice(0, LAB_LOOKUPS);
   let next = 0;
@@ -405,7 +406,7 @@ function renderVerdict() {
       "Check locally with ", el("code", { text: cliCommand(r, state.pythons, state.platforms) }),
       " in a checkout (add --index-url for your index), or commit a uv.lock: this page reads its recorded files without PyPI lookups."));
   } else if (privateIndex.length) {
-    alerts.push(el("p", { class: "alert warn", text: `Not checked: ${r.lockfile} names an index or source other than PyPI (an --index-url or --extra-index-url line, a [tool.uv] index or sources setting, a Pipfile source), so these may not be PyPI's packages and their names aren't sent to pypi.org: ${some(privateIndex)}. To check them on that index, run uvx wheelgap --index-url with its URL in a checkout.` }));
+    alerts.push(el("p", { class: "alert warn", text: privateText(r) }));
   }
   const skipped = r.skipped.filter((name) => !privateIndex.includes(name));
   if (skipped.length) {
