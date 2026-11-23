@@ -411,7 +411,10 @@ test("a clean verdict offers the README badge in the verdict card and hides it f
   const source = read("check.mjs");
   const rv = source.match(/^function renderVerdict\(\) \{.*?^}$/ms);
   const rn = source.match(/^function renderNext\(\) \{.*?^}$/ms);
-  assert.ok(rv && rn, "renderVerdict and renderNext are in check.mjs");
+  const nc = source.match(/^function notCheckedCount\(.*?^}$/ms);
+  const countedSrc = source.match(/^const counted = (.*);$/m);
+  const shareSrc = source.match(/^\$\("copy-share"\)\.onclick = .*;$/m);
+  assert.ok(rv && rn && nc && countedSrc && shareSrc, "the verdict, next steps and share handler are in check.mjs");
 
   const run = (rows, packages = 5, targets = [{ label: "3.14 linux-x86_64", python: "3.14", platform: "linux-x86_64" }], extra = {}) => {
     const made = new Map();
@@ -438,11 +441,13 @@ test("a clean verdict offers the README badge in the verdict card and hides it f
     };
     const fns = new Function(
       "$", "state", "el", "headline", "verdictText", "nextSteps", "sortPythons", "missedText", "cliCommand", "badgeMarkdown",
-      "pickLockfile", "autoPick", "privatePyprojectReason", "privateText", `${rv[0]}\n${rn[0]}\nreturn { renderVerdict, renderNext };`,
+      "pickLockfile", "autoPick", "privatePyprojectReason", "privateText", "shareText", "copy", "location",
+      `${nc[0]}\n${rv[0]}\n${rn[0]}\n${countedSrc[0]}\n${shareSrc[0]}\nreturn { renderVerdict, renderNext };`,
     )(
       element, state, () => ({}), checkLogic.headline, checkLogic.verdictText, checkLogic.nextSteps, checkLogic.sortPythons,
       checkLogic.missedText, checkLogic.cliCommand, checkLogic.badgeMarkdown, checkLogic.pickLockfile, checkLogic.autoPick,
-      checkLogic.privatePyprojectReason, checkLogic.privateText,
+      checkLogic.privatePyprojectReason, checkLogic.privateText, checkLogic.shareText,
+      (button, text) => { button.copiedText = text; }, { href: "https://wheelgap.github.io/tracker/check/?repo=o/r" },
     );
     fns.renderVerdict();
     fns.renderNext();
@@ -479,14 +484,28 @@ test("a clean verdict offers the README badge in the verdict card and hides it f
   const withPrivate = run([], 5, undefined, { private: ["corp"], skipped: ["corp"] });
   assert.equal(withPrivate("verdict-badge").hidden, true);
   assert.equal(withPrivate("next-title").textContent, "Fix it");
+  assert.equal(withPrivate("verdict section").classList.has("clean"), false);
+  assert.doesNotMatch(withPrivate("verdict").textContent, /✓/);
+  assert.match(withPrivate("verdict").textContent, /1 more wasn't checked/);
+
+  // Repeated requirements for the same private package count once in the displayed package total.
+  const repeatedPrivate = run([], 1, undefined, { private: ["corp"], private_count: 2, skipped: ["corp"] });
+  assert.equal(repeatedPrivate("verdict section").classList.has("clean"), false);
+  assert.equal(
+    repeatedPrivate("verdict").textContent,
+    "1 checked package has a wheel for this target; 1 more wasn't checked (its index isn't known to be PyPI)",
+  );
+  assert.equal(repeatedPrivate("next-title").textContent, "Fix it");
+  const shareButton = repeatedPrivate("copy-share");
+  shareButton.onclick({ currentTarget: shareButton });
+  assert.match(shareButton.copiedText, /; 1 more wasn't checked/);
+  assert.doesNotMatch(shareButton.copiedText, /✓|2 more/);
 
   // Both new copy buttons use copy() like the existing ones.
   assert.match(source, /\$\("copy-verdict-badge"\)\.onclick = \(e\) => copy\(e\.currentTarget, \$\("badge-md"\)\.textContent, "Badge Markdown copied"\);/);
   assert.match(source, /\$\("copy-share"\)\.onclick = \(e\) => copy\(e\.currentTarget, shareText\(/);
   // The share line names only the shown result's counted targets: never a Python the lockfile leaves out, and never
   // a selection whose check hasn't come back yet.
-  const countedSrc = source.match(/^const counted = (.*);$/m);
-  assert.ok(countedSrc, "counted() is in check.mjs");
   const counted = new Function("state", `return ${countedSrc[1]};`)({
     result: {
       outside_lock: ["3.15"],
@@ -499,7 +518,7 @@ test("a clean verdict offers the README badge in the verdict card and hides it f
   assert.deepEqual(counted("python"), ["3.14"]);
   assert.deepEqual(counted("platform"), ["linux-x86_64", "win-amd64"]);
   assert.match(source, /shareText\([^\n]*counted\("python"\), counted\("platform"\)/);
-  assert.match(source, /shareText\([^\n]*location\.href, \(state\.result\.private \|\| \[\]\)\.length\)/);
+  assert.match(source, /shareText\([^\n]*location\.href, notCheckedCount\(state\.result\)\)/);
   assert.doesNotMatch(source, /shareText\([^\n]*state\.pythons/);
 });
 
@@ -872,7 +891,7 @@ function resultPage(locks, query = null, { dir = null, rootProjectFiles = [], un
     worker: { postMessage: (m) => posts.push(m) }, history: { replaceState: (data, title, url) => urls.push(url) },
     status() {}, loadLab() {}, keepFocus: (fn) => fn(), renderTargets() {}, renderTable() {}, renderNext() {},
   };
-  const functions = ["el", "chip", "onLoaded", "runCheck", "onResult", "render", "renderVerdict", "renderSetup", "hideResultSections", "chooseFile"];
+  const functions = ["el", "chip", "onLoaded", "runCheck", "onResult", "render", "notCheckedCount", "renderVerdict", "renderSetup", "hideResultSections", "chooseFile"];
   const page = new Function(...Object.keys(env), `let seq = 0; ${functions.map(fn).join("\n")}; return {onLoaded, onResult};`)(...Object.values(env));
   page.onLoaded({ plan: { lockfiles: locks, workflows: [], root_project_files: rootProjectFiles, unlisted_inputs: unlistedInputs },
     detected: { found: [], unreadable: [], pythons: ["3.14"], platforms: ["linux-x86_64"] }, ref: "HEAD", root: "/repos/1" });
@@ -1214,7 +1233,8 @@ test("the package fallback and the chooser: a named file's notice comes first, a
 test("renderVerdict alerts on public extra indexes and avoids --index-url advice for private indexes", () => {
   const source = read("check.mjs");
   const rv = source.match(/^function renderVerdict\(\) \{.*?^}$/ms);
-  assert.ok(rv, "renderVerdict is in check.mjs");
+  const nc = source.match(/^function notCheckedCount\(.*?^}$/ms);
+  assert.ok(rv && nc, "renderVerdict and notCheckedCount are in check.mjs");
 
   const run = (resultExtra) => {
     const made = new Map();
@@ -1252,7 +1272,7 @@ test("renderVerdict alerts on public extra indexes and avoids --index-url advice
     };
     const renderVerdict = new Function(
       "$", "state", "el", "headline", "verdictText", "nextSteps", "sortPythons", "missedText", "privatePyprojectReason",
-      "privateText", "cliCommand", "runCheck", `${rv[0]}; return renderVerdict;`,
+      "privateText", "cliCommand", "runCheck", `${nc[0]}\n${rv[0]}; return renderVerdict;`,
     )(
       element, state, el, checkLogic.headline, checkLogic.verdictText, checkLogic.nextSteps,
       checkLogic.sortPythons, checkLogic.missedText, checkLogic.privatePyprojectReason, checkLogic.privateText,
@@ -1294,4 +1314,37 @@ test("an unknown row's reason is its Fix text, so a touch screen shows it too", 
 test("a truncated file list passes no settings-file list, so an extra-index file stays private", () => {
   // The driver refuses a null list (test_check_driver.py); a partial one could miss a root uv.toml or pyproject.toml.
   assert.match(read("worker.mjs"), /configs: tree\.truncated \? null : plan\.configs/);
+});
+
+test("renderTargets passes the distinct private package count to the platform tiles", () => {
+  const source = read("check.mjs").match(/^function renderTargets\(\) \{.*?^}$/ms);
+  const nc = read("check.mjs").match(/^function notCheckedCount\(.*?^}$/ms);
+  assert.ok(source && nc, "renderTargets and notCheckedCount are in check.mjs");
+  const made = new Map();
+  const element = (key) => {
+    if (!made.has(key)) made.set(key, { replaceChildren() {} });
+    return made.get(key);
+  };
+  const nodes = [];
+  const el = (tag, attrs = {}, ...kids) => {
+    const node = { tag, attrs, kids };
+    nodes.push(node);
+    return node;
+  };
+  const label = "3.14 linux-x86_64";
+  const state = {
+    python: "3.14", platform: null,
+    result: {
+      lockfile: "Pipfile.lock", private: ["corp"], private_count: 2, outside_lock: [],
+      targets: [{ label, python: "3.14", platform: "linux-x86_64" }],
+      per_target: { [label]: { wheel: 1, source: 0, missing: 0, unknown: 0 } },
+    },
+  };
+  const renderTargets = new Function("$", "state", "el", "sortPythons", "tileText", "NAMES", `${nc[0]}\n${source[0]}; return renderTargets;`)(
+    element, state, el, checkLogic.sortPythons, checkLogic.tileText, {},
+  );
+  renderTargets();
+  const tile = nodes.find((node) => node.attrs.class === "pct");
+  assert.equal(tile.kids[0], "?");
+  assert.equal(tile.kids[1].attrs.text, "1 not checked");
 });
