@@ -617,7 +617,7 @@ export function fixLinks(row, f, trackerPkg = null, gapWheels = null) {
 }
 
 // A prompt to paste into Claude Code (or any coding agent): the gaps, the bumps that fix them, and how to confirm.
-export function fixPrompt(repoName, result, fixes, pythons, platforms, gapWheels = null, tracker = {}) {
+export function fixPrompt(repoName, result, fixes, pythons, platforms, gapWheels = null, tracker = {}, notChecked = 0) {
   const groups = { all: [], some: [], loses: [], none: [], private: [], pending: [] };
   for (const r of result.rows) {
     const f = fixFor(r, fixes);
@@ -648,9 +648,11 @@ export function fixPrompt(repoName, result, fixes, pythons, platforms, gapWheels
       : "For gaps a release bump does not cover";
     lines.push(`${when}, these gap wheels are ${gapWheels.unofficial}:`, gapWheels.text, "");
   }
+  const indexFlag = notChecked > 0 ? " --index-url YOUR_INDEX_URL" : "";
+  const indexNote = notChecked > 0 ? " (replace YOUR_INDEX_URL with the project's package index URL)" : "";
   lines.push(
-    "Check each bump against our version constraints (a new major version may need code changes), update the lockfile with the project's own tool, and confirm with:",
-    `  ${cliCommand(result, pythons, platforms)}`,
+    `Check each bump against our version constraints (a new major version may need code changes), update the lockfile with the project's own tool, and confirm with${indexNote}:`,
+    `  ${cliCommand(result, pythons, platforms)}${indexFlag}`,
     "",
     "To let the agent check packages itself next time: claude mcp add wheelgap -- uvx --from wheelgap wheelgap-mcp",
   );

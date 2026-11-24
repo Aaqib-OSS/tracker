@@ -821,6 +821,27 @@ test("a lab result counts only for its own release and target", () => {
 });
 
 
+test("the copy prompt keeps its original command without unchecked packages and names the private index when needed", () => {
+  const result = {
+    lockfile: "requirements.txt",
+    rows: [{ name: "demo-pkg", version: "1.0", gaps: ["3.14 linux-x86_64"], lookup: true }],
+  };
+  const fixes = { "demo-pkg==1.0": { found: {}, loses: [] } };
+  const plain = fixPrompt("o/r", result, fixes, ["3.14"], ["linux-x86_64"]);
+  assert.equal(plain,
+    "In o/r, wheelgap found dependencies in requirements.txt with no prebuilt wheel for some of the platforms we target (Python 3.14 on linux-x86_64), so they'd be compiled from source or fail to install.\n\n" +
+    "No newer release has a wheel for these (consider dropping the target, another package, or building wheels):\n" +
+    "- demo-pkg 1.0: 3.14 linux-x86_64\n\n" +
+    "Check each bump against our version constraints (a new major version may need code changes), update the lockfile with the project's own tool, and confirm with:\n" +
+    "  uvx wheelgap requirements.txt -p 3.14 -t linux-x86_64\n\n" +
+    "To let the agent check packages itself next time: claude mcp add wheelgap -- uvx --from wheelgap wheelgap-mcp");
+  const privateIndex = fixPrompt("o/r", result, fixes, ["3.14"], ["linux-x86_64"], null, {}, 2);
+  assert.match(privateIndex, /replace YOUR_INDEX_URL with the project's package index URL/);
+  assert.match(privateIndex, /uvx wheelgap requirements\.txt -p 3\.14 -t linux-x86_64 --index-url YOUR_INDEX_URL/);
+  assert.doesNotMatch(privateIndex, /https?:\/\//);
+  assert.equal((privateIndex.match(/--index-url/g) || []).length, 1);
+});
+
 test("the copy prompt includes only the driver's gap wheel instructions", () => {
   const result = { lockfile: "uv.lock", rows: [] };
   const gapWheels = {
