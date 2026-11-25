@@ -482,7 +482,46 @@ const result = {
 test("rowsFor lists one Python's gaps, most first; headline counts distinct packages on counted targets", () => {
   assert.deepEqual(rowsFor(result, "3.14").map((r) => [r.name, r.here.length]), [["b", 2], ["a", 1]]);
   assert.deepEqual(rowsFor(result, "3.15"), []); // outside the lock: check() reports no gaps there
-  assert.deepEqual(headline(result), { gaps: 2, unknown: 0, packages: 10, targets: 2 });
+  assert.deepEqual(headline(result), { gaps: 2, unknown: 0, packages: 10, targets: 2, unknownTargets: 0 });
+});
+
+test("headline leaves targets outside uv environments out of the counted total", () => {
+  const excluded = { ...result, outside_environments: ["3.14 win-arm64"], rows: [] };
+  assert.deepEqual(headline(excluded), { gaps: 0, unknown: 0, packages: 10, targets: 1, unknownTargets: 0 });
+  const none = { ...excluded, outside_environments: ["3.14 win-arm64", "3.14 linux-x86_64"] };
+  assert.equal(headline(none).targets, 0);
+  assert.match(shareText("o/r", headline(none), [], [], "https://example.com"), /lockfile leaves out every target picked/);
+});
+
+test("undecided uv environments are unknown targets in the verdict and copied result", () => {
+  const undecided = {
+    ...result, rows: [],
+    unknown_environments: { "3.14 win-arm64": "the lock's environments don't say whether this target is covered" },
+  };
+  const h = headline(undecided);
+  assert.deepEqual(h, { gaps: 0, unknown: 0, packages: 10, targets: 1, unknownTargets: 1 });
+  for (const summary of [h, { ...h, targets: 0, packages: 0 }, { ...h, gaps: 2 }, { ...h, unknown: 1 }]) {
+    const verdict = verdictText(summary);
+    const copied = shareText("o/r", summary, ["3.14"], ["linux-x86_64"], "https://example.com");
+    for (const text of [verdict, copied]) {
+      assert.match(text, /1 target couldn't be checked.*lock's environments/);
+      assert.doesNotMatch(text, /✓|lockfile leaves out every target/);
+    }
+  }
+  const none = { ...h, targets: 0, unknownTargets: 2, packages: 0 };
+  assert.match(verdictText(none), /No targets were checked.*2 targets couldn't be checked/);
+  assert.match(shareText("o/r", none, [], [], "https://example.com"), /no targets were checked.*2 targets couldn't be checked/);
+});
+
+test("the shared clean result doesn't imply excluded Python/platform pairs were checked", () => {
+  const diagonal = {
+    ...result, outside_lock: [], rows: [],
+    targets: ["3.13", "3.14"].flatMap((python) => ["linux-x86_64", "win-amd64"]
+      .map((platform) => ({ label: `${python} ${platform}`, python, platform }))),
+    outside_environments: ["3.13 win-amd64", "3.14 linux-x86_64"],
+  };
+  const text = shareText("o/r", headline(diagonal), ["3.13", "3.14"], ["linux-x86_64", "win-amd64"], "https://example.com");
+  assert.equal(text, "✓ o/r: all 10 dependencies have a wheel for the 2 checked targets (checked with wheelgap) https://example.com");
 });
 
 test("the CLI command and the fix prompt reproduce the check", () => {
@@ -490,6 +529,71 @@ test("the CLI command and the fix prompt reproduce the check", () => {
   assert.equal(cliCommand({ lockfile: "my app/uv.lock" }, ["3.14"], ["linux-x86_64"]), "uvx wheelgap 'my app/uv.lock' -p 3.14 -t linux-x86_64");
   assert.equal(packageCliCommand("httpie", ["3.14", "3.13"], ["linux-x86_64", "win-arm64"]), "uvx wheelgap --deps httpie -p 3.13,3.14 -t linux-x86_64,win-arm64");
   assert.equal(packageCliCommand("httpie; rm -rf /", ["3.14"], ["linux-x86_64"]), null);
+});
+
+test("the CLI command and fix prompt leave refused environments out", () => {
+  const pythons = ["3.13"];
+  const platforms = ["linux-x86_64", "win-amd64"];
+  const targets = platforms.map((platform) => ({ label: `3.13 ${platform}`, python: "3.13", platform }));
+  for (const environments of [
+    { outside_environments: ["3.13 win-amd64"] },
+    { unknown_environments: { "3.13 win-amd64": "the lock's environments don't say whether this target is covered" } },
+  ]) {
+    const res = { lockfile: "uv.lock", targets, rows: [row("fastlib", "1.0", [targets[0].label])], ...environments };
+    const command = cliCommand(res, pythons, platforms);
+    assert.equal(command, "uvx wheelgap uv.lock -p 3.13 -t linux-x86_64");
+    const prompt = fixPrompt("paperless-ngx/paperless-ngx", res, {}, pythons, platforms);
+    assert.equal(prompt.split("\n").find((line) => line.startsWith("  uvx wheelgap")), `  ${command}`);
+    assert.match(prompt.split("\n")[0], /targets we checked \(3\.13 linux-x86_64\)/);
+    assert.doesNotMatch(prompt, /win-amd64/);
+  }
+});
+
+test("the CLI keeps the larger safe Python/platform rectangle", () => {
+  const pythons = ["3.13", "3.14", "3.15"];
+  const platforms = ["linux-x86_64", "win-amd64", "macos-arm64"];
+  const targets = pythons.flatMap((python) => platforms.map((platform) => ({ label: `${python} ${platform}`, python, platform })));
+  const command = (outside_environments) => cliCommand({ lockfile: "uv.lock", targets, outside_environments }, pythons, platforms);
+  // Dropping one platform keeps six targets; dropping both affected Pythons keeps only three.
+  assert.equal(command(["3.13 win-amd64", "3.14 win-amd64"]), "uvx wheelgap uv.lock -p 3.13,3.14,3.15 -t linux-x86_64,macos-arm64");
+  // The opposite shape keeps more targets by dropping one Python, not two platforms.
+  assert.equal(command(["3.14 linux-x86_64", "3.14 win-amd64"]), "uvx wheelgap uv.lock -p 3.13,3.15 -t linux-x86_64,win-amd64,macos-arm64");
+  assert.deepEqual(pythons, ["3.13", "3.14", "3.15"]);
+  assert.deepEqual(platforms, ["linux-x86_64", "win-amd64", "macos-arm64"]);
+});
+
+test("crossed environment restrictions fall back to one covered pair", () => {
+  const pythons = ["3.13", "3.14"];
+  const platforms = ["linux-x86_64", "win-amd64"];
+  const res = {
+    lockfile: "uv.lock", rows: [row("fastlib", "1.0", ["3.13 linux-x86_64", "3.14 win-amd64"])],
+    targets: pythons.flatMap((python) => platforms.map((platform) => ({ label: `${python} ${platform}`, python, platform }))),
+    outside_environments: ["3.13 win-amd64"],
+    unknown_environments: { "3.14 linux-x86_64": "undecided" },
+  };
+  const command = cliCommand(res, pythons, platforms);
+  assert.equal(command, "uvx wheelgap uv.lock -p 3.13 -t linux-x86_64");
+  const prompt = fixPrompt("o/r", res, {}, pythons, platforms);
+  assert.equal(prompt.split("\n").find((line) => line.startsWith("  uvx wheelgap")), `  ${command}`);
+  assert.match(prompt.split("\n")[0], /targets we checked \(3\.13 linux-x86_64, 3\.14 win-amd64\)/);
+  assert.match(prompt, /This command checks only Python 3\.13 on linux-x86_64; check the other listed targets separately\./);
+  // While a different selection is being checked, an unseen pair isn't a covered fallback.
+  assert.equal(cliCommand(res, ["3.15"], platforms), null);
+  assert.equal(cliCommand(res, ["3.14"], platforms), "uvx wheelgap uv.lock -p 3.14 -t win-amd64");
+});
+
+test("no CLI command or fix command is offered when every selected environment is refused", () => {
+  const targets = [{ label: "3.13 win-amd64", python: "3.13", platform: "win-amd64" }];
+  for (const environments of [
+    { outside_environments: [targets[0].label] },
+    { unknown_environments: { [targets[0].label]: "undecided" } },
+  ]) {
+    const res = { lockfile: "uv.lock", targets, rows: [], ...environments };
+    assert.equal(cliCommand(res, ["3.13"], ["win-amd64"]), null);
+    const prompt = fixPrompt("o/r", res, {}, ["3.13"], ["win-amd64"]);
+    assert.match(prompt, /No selected target is known to be covered/);
+    assert.doesNotMatch(prompt, /uvx wheelgap|null| -p | -t /);
+  }
 });
 
 test("projectNameFromMetadata reads plain names from setup.cfg and pyproject.toml and rejects dynamic or invalid ones", () => {
@@ -707,7 +811,7 @@ test("unknown cells are listed but not counted as missing a wheel", () => {
     outside_lock: [],
     rows: [row("u", "1", [], { "3.14 linux-x86_64": "unknown", "3.14 win-arm64": "wheel" }, { unknown: ["3.14 linux-x86_64"] })],
   };
-  assert.deepEqual(headline(res), { gaps: 0, unknown: 1, packages: 10, targets: 3 });
+  assert.deepEqual(headline(res), { gaps: 0, unknown: 1, packages: 10, targets: 3, unknownTargets: 0 });
   assert.deepEqual(rowsFor(res, "3.14").map((r) => r.name), ["u"]);
   assert.equal(verdictText(headline(res)), "No package is missing a wheel, but 1 of 10 couldn't be checked on some targets");
 });
@@ -829,7 +933,7 @@ test("the copy prompt keeps its original command without unchecked packages and 
   const fixes = { "demo-pkg==1.0": { found: {}, loses: [] } };
   const plain = fixPrompt("o/r", result, fixes, ["3.14"], ["linux-x86_64"]);
   assert.equal(plain,
-    "In o/r, wheelgap found dependencies in requirements.txt with no prebuilt wheel for some of the platforms we target (Python 3.14 on linux-x86_64), so they'd be compiled from source or fail to install.\n\n" +
+    "In o/r, wheelgap found dependencies in requirements.txt with no prebuilt wheel for some of the targets we checked (Python 3.14 on linux-x86_64), so they'd be compiled from source or fail to install.\n\n" +
     "No newer release has a wheel for these (consider dropping the target, another package, or building wheels):\n" +
     "- demo-pkg 1.0: 3.14 linux-x86_64\n\n" +
     "Check each bump against our version constraints (a new major version may need code changes), update the lockfile with the project's own tool, and confirm with:\n" +

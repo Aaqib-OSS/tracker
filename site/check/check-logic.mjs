@@ -300,13 +300,29 @@ export function unreadableReason(result) {
 
 // A platform's tile, from its counts ({wheel, source, missing, unknown}): how many packages have no wheel there, a ✓
 // only when every package was checked and has one, and a ? when none is known to lack one but some couldn't be
-// checked, where a ✓ would read as a pass. `outside`: the lock leaves this Python out, so nothing is counted.
+// checked, where a ✓ would read as a pass. `outside`: the lock leaves this target out, so nothing is counted.
 export function tileText(c, outside, notChecked = 0) {
   if (outside) return { mark: "–", note: "not locked" };
   const without = c.source + c.missing; // unknown is in the tooltip, never counted as "without a wheel"
   if (without) return { mark: String(without), note: "without a wheel" };
   if (notChecked) return { mark: "?", note: `${notChecked + c.unknown} not checked` };
   return c.unknown ? { mark: "?", note: `${c.unknown} unknown` } : { mark: "✓", note: "all wheels" };
+}
+
+export function targetOutsideLock(result, target) {
+  return result.outside_lock.includes(target.python) || (result.outside_environments || []).includes(target.label);
+}
+
+// uv's environments can restrict Python as well as the platform. With several Pythons picked, name both so a
+// target left out for one Python doesn't read as though every selected Python on that platform is excluded.
+export function environmentsText(result) {
+  const excluded = result.targets.filter((t) => (result.outside_environments || []).includes(t.label));
+  if (!excluded.length) return null;
+  const names = Object.fromEntries(PLATFORMS);
+  const severalPythons = new Set(result.targets.map((t) => t.python)).size > 1;
+  const targets = excluded.map((t) => `${names[t.platform] || t.platform}${severalPythons ? ` on Python ${t.python}` : ""}`);
+  const pronoun = targets.length === 1 ? "it" : "them";
+  return `${result.lockfile} is locked for [tool.uv] environments that leave out ${targets.join(", ")}, so uv sync fails there. Add ${pronoun} to environments and run uv lock to check ${pronoun}.`;
 }
 
 // Why packages of a looked-up file are unknown, from the worker's count of the lookups that got no answer
@@ -456,14 +472,40 @@ export function rowsFor(result, python) {
 export function headline(result) {
   const gaps = new Set(result.rows.filter((r) => r.gaps.length).map((r) => r.name));
   const unknown = new Set(result.rows.filter((r) => (r.unknown || []).length && !gaps.has(r.name)).map((r) => r.name));
-  const counted = result.targets.filter((t) => !result.outside_lock.includes(t.python));
-  return { gaps: gaps.size, unknown: unknown.size, packages: result.packages, targets: counted.length };
+  const included = result.targets.filter((t) => !targetOutsideLock(result, t));
+  const unknownTargets = included.filter((t) => result.unknown_environments?.[t.label]).length;
+  return { gaps: gaps.size, unknown: unknown.size, packages: result.packages, targets: included.length - unknownTargets, unknownTargets };
 }
 
-// The `uvx wheelgap` command that reproduces the result locally.
+function cliTargets(result, pythons, platforms) {
+  if (!pythons.length || !platforms.length) return null;
+  const refused = (result.targets || []).filter((t) =>
+    (result.outside_environments || []).includes(t.label) || result.unknown_environments?.[t.label]);
+  if (!refused.length) return { pythons, platforms, covered: null };
+  const covered = result.targets.filter((t) => !refused.includes(t) && pythons.includes(t.python) && platforms.includes(t.platform));
+  if (!covered.length) return null;
+  const has = (python, platform) => covered.some((t) => t.python === python && t.platform === platform);
+  // -p and -t form a Cartesian product: keep the larger rectangle with no refused or unchecked pair.
+  const safePlatforms = platforms.filter((platform) => pythons.every((python) => has(python, platform)));
+  const safePythons = pythons.filter((python) => platforms.every((platform) => has(python, platform)));
+  if (safePlatforms.length && safePlatforms.length * pythons.length >= safePythons.length * platforms.length) {
+    platforms = safePlatforms;
+  } else if (safePythons.length) {
+    pythons = safePythons;
+  } else {
+    // Crossed exclusions can empty both rectangles even when an individual pair is covered.
+    pythons = [covered[0].python];
+    platforms = [covered[0].platform];
+  }
+  return { pythons, platforms, covered };
+}
+
+// The `uvx wheelgap` command for covered targets, or null when none of the selection can be checked.
 export function cliCommand(result, pythons, platforms) {
+  const selected = cliTargets(result, pythons, platforms);
+  if (!selected) return null;
   const lock = /^[A-Za-z0-9._\/-]+$/.test(result.lockfile) ? result.lockfile : `'${result.lockfile.replace(/'/g, "")}'`;
-  return `uvx wheelgap ${lock} -p ${sortPythons(pythons).join(",")} -t ${platforms.join(",")}`;
+  return `uvx wheelgap ${lock} -p ${sortPythons(selected.pythons).join(",")} -t ${selected.platforms.join(",")}`;
 }
 
 const PACKAGE_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/;
@@ -618,6 +660,8 @@ export function fixLinks(row, f, trackerPkg = null, gapWheels = null) {
 
 // A prompt to paste into Claude Code (or any coding agent): the gaps, the bumps that fix them, and how to confirm.
 export function fixPrompt(repoName, result, fixes, pythons, platforms, gapWheels = null, tracker = {}, notChecked = 0) {
+  const selected = cliTargets(result, pythons, platforms);
+  if (!selected) return "No selected target is known to be covered by the lockfile's environments. Choose a covered target before checking again.";
   const groups = { all: [], some: [], loses: [], none: [], private: [], pending: [] };
   for (const r of result.rows) {
     const f = fixFor(r, fixes);
@@ -631,8 +675,10 @@ export function fixPrompt(repoName, result, fixes, pythons, platforms, gapWheels
       groups[f.kind].push(`- ${r.name} ${r.version}: ${gaps}${ask}`);
     } else groups[f.kind].push(`- ${r.name} ${r.version}: ${gaps}`);
   }
+  const where = selected.covered ? selected.covered.map((t) => t.label).join(", ")
+    : `Python ${sortPythons(pythons).join(", ")} on ${platforms.join(", ")}`;
   const lines = [
-    `In ${repoName}, wheelgap found dependencies in ${result.lockfile} with no prebuilt wheel for some of the platforms we target (Python ${sortPythons(pythons).join(", ")} on ${platforms.join(", ")}), so they'd be compiled from source or fail to install.`,
+    `In ${repoName}, wheelgap found dependencies in ${result.lockfile} with no prebuilt wheel for some of the targets we checked (${where}), so they'd be compiled from source or fail to install.`,
     "",
   ];
   const section = (key, title) => groups[key].length && lines.push(title, ...groups[key], "");
@@ -653,6 +699,8 @@ export function fixPrompt(repoName, result, fixes, pythons, platforms, gapWheels
   lines.push(
     `Check each bump against our version constraints (a new major version may need code changes), update the lockfile with the project's own tool, and confirm with${indexNote}:`,
     `  ${cliCommand(result, pythons, platforms)}${indexFlag}`,
+    ...(selected.covered && selected.covered.length > selected.pythons.length * selected.platforms.length
+      ? [`This command checks only Python ${sortPythons(selected.pythons).join(", ")} on ${selected.platforms.join(", ")}; check the other listed targets separately.`] : []),
     "",
     "To let the agent check packages itself next time: claude mcp add wheelgap -- uvx --from wheelgap wheelgap-mcp",
   );
@@ -665,11 +713,18 @@ export function notCheckedTail(n) {
   return n ? `; ${n} more ${n === 1 ? "wasn't" : "weren't"} checked (${n === 1 ? "its" : "their"} index isn't known to be PyPI)` : "";
 }
 
+function unknownEnvironmentsTail(h) {
+  const n = h.unknownTargets;
+  return n ? `; ${n} target${n === 1 ? "" : "s"} couldn't be checked (the lock's environments don't say whether ${n === 1 ? "it is" : "they are"} covered)` : "";
+}
+
 // The verdict's headline sentence.
 export function verdictText(h, notChecked = 0) {
+  const environments = unknownEnvironmentsTail(h);
+  if (h.targets === 0 && h.unknownTargets) return `No targets were checked${environments}`;
   // Nothing to count (every package skipped, or none listed): never a ✓, which would read as a pass.
-  if (h.packages === 0) return "No packages were checked";
-  const tail = notCheckedTail(notChecked);
+  if (h.packages === 0) return `No packages were checked${environments}`;
+  const tail = notCheckedTail(notChecked) + environments;
   const checked = notChecked ? "checked " : "";
   const where = h.targets === 1 ? "this target" : `all ${h.targets} targets`;
   if (h.gaps === 0 && h.unknown) {
@@ -678,7 +733,7 @@ export function verdictText(h, notChecked = 0) {
   }
   if (h.gaps === 0) {
     const count = h.packages === 1 ? `1 ${checked}package has` : `All ${h.packages} ${checked}packages have`;
-    return `${notChecked ? "" : "✓ "}${count} a wheel for ${where}${tail}`;
+    return `${notChecked || h.unknownTargets ? "" : "✓ "}${count} a wheel for ${where}${tail}`;
   }
   const some = h.targets === 1 ? "this target" : `at least one of the ${h.targets} targets`;
   const count = h.packages === 1 ? `1 ${checked}package has` : `${h.gaps} of ${h.packages} ${checked}packages ${h.gaps === 1 ? "has" : "have"}`;
@@ -698,12 +753,14 @@ export function nextSection(h, notChecked = 0) {
 // pasted where the page's alerts don't follow it, so `notChecked` (the packages left off pypi.org as a private
 // index's, which the counts leave out) is said in the line itself, and a result with any is never a ✓.
 export function shareText(repoName, h, pythons, platforms, url, notChecked = 0) {
-  const tail = `${notCheckedTail(notChecked)} (checked with wheelgap) ${url}`;
+  const environments = unknownEnvironmentsTail(h);
+  const tail = `${notCheckedTail(notChecked)}${environments} (checked with wheelgap) ${url}`;
+  if (h.targets === 0 && h.unknownTargets) return `${repoName}: no targets were checked${tail}`;
   if (h.packages === 0) {
-    return `${repoName}: no dependencies were checked (checked with wheelgap) ${url}`;
+    return `${repoName}: no dependencies were checked${environments} (checked with wheelgap) ${url}`;
   }
   if (h.targets === 0) {
-    return `${repoName}: lockfile leaves out every Python picked${tail}`;
+    return `${repoName}: lockfile leaves out every target picked${tail}`;
   }
   if (h.gaps === 0 && h.unknown) {
     const where = h.targets === 1 ? "1 target" : "some targets";
@@ -713,7 +770,11 @@ export function shareText(repoName, h, pythons, platforms, url, notChecked = 0) 
     const deps = h.packages === 1 ? "1 dependency has" : `all ${h.packages} dependencies have`;
     const pyList = sortPythons(pythons).join(", ");
     const plats = platforms.length === 1 ? "1 platform" : `${platforms.length} platforms`;
-    return `${notChecked ? "" : "✓ "}${repoName}: ${notChecked ? deps.replace(/ (has|have)$/, " checked $1") : deps} a wheel on Python ${pyList} for ${plats}${tail}`;
+    // Environment markers can leave only some Python/platform pairs. Naming each axis would imply their full
+    // cross product was checked (for example Linux on 3.13 and Windows on 3.14 doesn't check Windows on 3.13).
+    const where = h.targets < pythons.length * platforms.length
+      ? `for the ${h.targets} checked targets` : `on Python ${pyList} for ${plats}`;
+    return `${notChecked || h.unknownTargets ? "" : "✓ "}${repoName}: ${notChecked ? deps.replace(/ (has|have)$/, " checked $1") : deps} a wheel ${where}${tail}`;
   }
   const verb = h.gaps === 1 ? "has" : "have";
   const noun = h.packages === 1 ? "dependency" : "dependencies";

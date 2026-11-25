@@ -49,8 +49,8 @@ test("a result with no package checked shows the verdict and the setup, but no b
   assert.ok(source, "render is in check.mjs");
   const parts = ["hideResultSections", "renderVerdict", "renderSetup", "renderTargets", "renderTable", "renderNext"];
   const calls = [];
-  const render = (packages) => new Function("state", ...parts, `${source[0]}; return render;`)(
-    { result: { packages } },
+  const render = (packages, unknown_environments = {}) => new Function("state", ...parts, `${source[0]}; return render;`)(
+    { result: { packages, unknown_environments } },
     ...parts.map((name) => (...args) => { calls.push([name, ...args]); }),
   );
   render(0)(); // every package skipped as a private index's, or a file that lists none
@@ -58,6 +58,9 @@ test("a result with no package checked shows the verdict and the setup, but no b
   calls.length = 0;
   render(3)();
   assert.deepEqual(calls.map(([name]) => name), parts);
+  calls.length = 0;
+  render(0, { "3.13 win-amd64": "the lock's environments don't say whether this target is covered" })();
+  assert.deepEqual(calls.map(([name]) => name), parts); // the target's ? and reason still need to be shown
 });
 
 // worker.mjs needs a browser and Pyodide, so its check() is run on stand-ins for both: `needs` is what the driver asks
@@ -448,13 +451,14 @@ test("a clean verdict offers the README badge in the verdict card and hides it f
     };
     const fns = new Function(
       "$", "state", "el", "headline", "verdictText", "nextSection", "nextSteps", "sortPythons", "missedText", "cliCommand", "badgeMarkdown",
-      "pickLockfile", "autoPick", "privatePyprojectReason", "privateText", "shareText", "copy", "location",
+      "pickLockfile", "autoPick", "privatePyprojectReason", "privateText", "shareText", "copy", "location", "targetOutsideLock", "environmentsText",
       `${nc[0]}\n${rv[0]}\n${rn[0]}\n${countedSrc[0]}\n${shareSrc[0]}\nreturn { renderVerdict, renderNext };`,
     )(
       element, state, () => ({}), checkLogic.headline, checkLogic.verdictText, checkLogic.nextSection, checkLogic.nextSteps, checkLogic.sortPythons,
       checkLogic.missedText, checkLogic.cliCommand, checkLogic.badgeMarkdown, checkLogic.pickLockfile, checkLogic.autoPick,
       checkLogic.privatePyprojectReason, checkLogic.privateText, checkLogic.shareText,
       (button, text) => { button.copiedText = text; }, { href: "https://wheelgap.github.io/tracker/check/?repo=o/r" },
+      checkLogic.targetOutsideLock, checkLogic.environmentsText,
     );
     fns.renderVerdict();
     fns.renderNext();
@@ -523,7 +527,7 @@ test("a clean verdict offers the README badge in the verdict card and hides it f
   assert.match(source, /\$\("copy-share"\)\.onclick = \(e\) => copy\(e\.currentTarget, shareText\(/);
   // The share line names only the shown result's counted targets: never a Python the lockfile leaves out, and never
   // a selection whose check hasn't come back yet.
-  const counted = new Function("state", `return ${countedSrc[1]};`)({
+  const counted = new Function("state", "targetOutsideLock", `return ${countedSrc[1]};`)({
     result: {
       outside_lock: ["3.15"],
       targets: [
@@ -531,7 +535,7 @@ test("a clean verdict offers the README badge in the verdict card and hides it f
         { python: "3.15", platform: "linux-x86_64" }, { python: "3.15", platform: "win-amd64" },
       ],
     },
-  });
+  }, checkLogic.targetOutsideLock);
   assert.deepEqual(counted("python"), ["3.14"]);
   assert.deepEqual(counted("platform"), ["linux-x86_64", "win-amd64"]);
   assert.match(source, /shareText\([^\n]*counted\("python"\), counted\("platform"\)/);
@@ -619,7 +623,7 @@ test("renderTable shows the links in the Fix cell and the package-name link for 
   const SHOWN = 60;
 
   const runTable = new Function(
-    "$", "state", "el", "rowsFor", "fixFor", "gapWheelFixText", "canonicalName", "fixLinks", "labFor", "labVerdict", "gapWheelFor", "gapWheelTitle", "NAMES", "STATUS_TEXT", "LAB_SHORT", "FIX_TEXT", "SHOWN",
+    "$", "state", "el", "rowsFor", "fixFor", "gapWheelFixText", "canonicalName", "fixLinks", "labFor", "labVerdict", "gapWheelFor", "gapWheelTitle", "NAMES", "STATUS_TEXT", "LAB_SHORT", "FIX_TEXT", "SHOWN", "targetOutsideLock",
     `
     ${fn("renderTable")}
     return renderTable;
@@ -628,7 +632,7 @@ test("renderTable shows the links in the Fix cell and the package-name link for 
     $, state, el,
     checkLogic.rowsFor, checkLogic.fixFor, checkLogic.gapWheelFixText, checkLogic.canonicalName,
     checkLogic.fixLinks, checkLogic.labFor, checkLogic.labVerdict, checkLogic.gapWheelFor, checkLogic.gapWheelTitle,
-    NAMES, STATUS_TEXT, LAB_SHORT, FIX_TEXT, SHOWN
+    NAMES, STATUS_TEXT, LAB_SHORT, FIX_TEXT, SHOWN, checkLogic.targetOutsideLock
   );
 
   runTable();
@@ -1289,11 +1293,11 @@ test("renderVerdict alerts on public extra indexes and avoids --index-url advice
     };
     const renderVerdict = new Function(
       "$", "state", "el", "headline", "verdictText", "nextSteps", "sortPythons", "missedText", "privatePyprojectReason",
-      "privateText", "cliCommand", "runCheck", `${nc[0]}\n${rv[0]}; return renderVerdict;`,
+      "privateText", "cliCommand", "runCheck", "environmentsText", `${nc[0]}\n${rv[0]}; return renderVerdict;`,
     )(
       element, state, el, checkLogic.headline, checkLogic.verdictText, checkLogic.nextSteps,
       checkLogic.sortPythons, checkLogic.missedText, checkLogic.privatePyprojectReason, checkLogic.privateText,
-      checkLogic.cliCommand, () => {},
+      checkLogic.cliCommand, () => {}, checkLogic.environmentsText,
     );
     renderVerdict();
     return element("alerts").children.map((c) => c.attrs.text);
@@ -1357,8 +1361,8 @@ test("renderTargets passes the distinct private package count to the platform ti
       per_target: { [label]: { wheel: 1, source: 0, missing: 0, unknown: 0 } },
     },
   };
-  const renderTargets = new Function("$", "state", "el", "sortPythons", "tileText", "NAMES", `${nc[0]}\n${source[0]}; return renderTargets;`)(
-    element, state, el, checkLogic.sortPythons, checkLogic.tileText, {},
+  const renderTargets = new Function("$", "state", "el", "sortPythons", "tileText", "NAMES", "targetOutsideLock", `${nc[0]}\n${source[0]}; return renderTargets;`)(
+    element, state, el, checkLogic.sortPythons, checkLogic.tileText, {}, checkLogic.targetOutsideLock,
   );
   renderTargets();
   const tile = nodes.find((node) => node.attrs.class === "pct");
@@ -1386,12 +1390,12 @@ test("the gaps note never says every package has a wheel when a private index's 
     };
     new Function(
       "$", "state", "el", "rowsFor", "fixFor", "gapWheelFixText", "canonicalName", "fixLinks", "labFor", "labVerdict",
-      "gapWheelFor", "gapWheelTitle", "notCheckedTail", "NAMES", "STATUS_TEXT", "LAB_SHORT", "FIX_TEXT", "SHOWN",
+      "gapWheelFor", "gapWheelTitle", "notCheckedTail", "NAMES", "STATUS_TEXT", "LAB_SHORT", "FIX_TEXT", "SHOWN", "targetOutsideLock",
       `${nc[0]}\n${rt[0]}; return renderTable;`,
     )(
       $, state, () => ({}), checkLogic.rowsFor, checkLogic.fixFor, checkLogic.gapWheelFixText, checkLogic.canonicalName,
       checkLogic.fixLinks, checkLogic.labFor, checkLogic.labVerdict, checkLogic.gapWheelFor, checkLogic.gapWheelTitle, checkLogic.notCheckedTail,
-      {}, {}, {}, {}, 60,
+      {}, {}, {}, {}, 60, checkLogic.targetOutsideLock,
     )();
     return $("gaps-note").textContent;
   };
@@ -1404,4 +1408,129 @@ test("the gaps note never says every package has a wheel when a private index's 
     note({ private: ["corp-a", "corp-b"] }),
     "None among the checked packages; 2 more weren't checked (their index isn't known to be PyPI).",
   );
+});
+
+test("uv environments distinguish excluded and undecided platforms throughout the result", () => {
+  const source = read("check.mjs");
+  const functions = ["notCheckedCount", "renderVerdict", "renderTargets", "renderTable", "renderNext"]
+    .map((name) => source.match(new RegExp(`^function ${name}\\(.*?^}$`, "ms"))[0]).join("\n");
+  const linux = { label: "3.13 linux-x86_64", python: "3.13", platform: "linux-x86_64" };
+  const windows = { label: "3.13 win-amd64", python: "3.13", platform: "win-amd64" };
+  const run = (extra = {}, platform = null, lab = {}) => {
+    const made = new Map();
+    const classes = new Set();
+    const $ = (id) => {
+      if (!made.has(id)) made.set(id, {
+        textContent: "", children: [], hidden: false,
+        classList: { toggle: (name, on) => on ? classes.add(name) : classes.delete(name) },
+        closest() { return this; },
+        replaceChildren(...kids) { this.children = kids; },
+      });
+      return made.get(id);
+    };
+    const el = (tag, attrs = {}, ...kids) => ({ tag, attrs, kids });
+    const state = {
+      repo: { owner: "paperless-ngx", name: "paperless-ngx" }, ref: "main",
+      python: "3.13", pythons: ["3.13"], platforms: ["linux-x86_64", "win-amd64"], platform,
+      showAll: false, fixes: {}, gapWheels: null, lab,
+      plan: { lockfiles: [{ path: "uv.lock" }] },
+      result: {
+        lockfile: "uv.lock", packages: 2, outside_lock: [], outside_environments: [windows.label],
+        targets: [linux, windows], skipped: [], private: [], rows: [],
+        per_target: {
+          [linux.label]: { wheel: 2, source: 0, missing: 0, unknown: 0 },
+          [windows.label]: { wheel: 0, source: 0, missing: 0, unknown: 0 },
+        },
+        ...extra,
+      },
+    };
+    const env = { ...checkLogic, $, state, el, NAMES: Object.fromEntries(checkLogic.PLATFORMS), SHOWN: 60,
+      STATUS_TEXT: {}, LAB_SHORT: {}, FIX_TEXT: { private: () => "not looked up" } };
+    new Function(...Object.keys(env), `${functions}; renderVerdict(); renderTargets(); renderTable(); renderNext();`)(...Object.values(env));
+    const countedSource = source.match(/^const counted = (.*);$/m)[1];
+    const counted = new Function(...Object.keys(env), `return ${countedSource};`)(...Object.values(env));
+    return { $, classes, counted };
+  };
+
+  const page = run();
+  const alerts = page.$("alerts").children.map((node) => node.attrs.text);
+  assert.deepEqual(alerts, ["uv.lock is locked for [tool.uv] environments that leave out Windows x64, so uv sync fails there. Add it to environments and run uv lock to check it."]);
+  const tiles = page.$("platforms").children.map((li) => li.kids[0].kids.find((node) => node.attrs.class === "pct"));
+  assert.deepEqual(tiles.map((tile) => [tile.kids[0], tile.kids[1].attrs.text]), [["✓", "all wheels"], ["–", "not locked"]]);
+  assert.deepEqual(page.counted("python"), ["3.13"]);
+  assert.deepEqual(page.counted("platform"), ["linux-x86_64"]);
+  assert.equal(page.$("cli").textContent, "uvx wheelgap uv.lock -p 3.13 -t linux-x86_64");
+  assert.doesNotMatch(page.$("gaps-note").textContent, /every package installs from a wheel here/);
+
+  const selected = run({}, "win-amd64");
+  assert.match(selected.$("gaps-note").textContent, /not locked.*environments/);
+  assert.doesNotMatch(selected.$("gaps-note").textContent, /every package installs from a wheel/);
+  assert.equal(selected.$("gap-table").hidden, true);
+
+  const none = run({ targets: [windows] });
+  assert.equal(none.$("verdict").textContent, "paperless-ngx/paperless-ngx's lockfile leaves out every target picked");
+  assert.equal(none.$("verdict-badge").hidden, true);
+  assert.equal(none.classes.has("clean"), false);
+  assert.deepEqual(none.counted("platform"), []);
+  assert.match(none.$("gaps-note").textContent, /not locked/);
+  assert.match(none.$("cli").textContent, /No selected target is known to be covered/);
+  assert.doesNotMatch(none.$("cli").textContent, /uvx wheelgap|null| -p | -t /);
+  assert.equal(none.$("copy-prompt").hidden, true);
+  assert.equal(none.$("prompt-note").hidden, true);
+
+  const row = { name: "fastlib", version: "1.0", lookup: false, gaps: [linux.label], unknown: [],
+    statuses: { [linux.label]: "missing", [windows.label]: "source" } };
+  const lab = { fastlib: { builds: [{ target: windows.label, version: "1.0", outcome: "built" }] } };
+  const withLab = run({ rows: [row] }, null, lab);
+  assert.doesNotMatch(withLab.$("gaps-note").textContent, /build lab/);
+  const cells = withLab.$("gap-table").children[1].kids[0].kids;
+  assert.deepEqual(cells[2].kids[0].attrs, { class: "na", text: "–", title: "not locked for this target" });
+  assert.match(run({ rows: [row], outside_environments: [] }, null, lab).$("gaps-note").textContent, /build lab/);
+
+  const reason = "the lock's environments don't say whether this target is covered";
+  const unknown = { outside_environments: [], unknown_environments: { [windows.label]: reason } };
+  const mixed = run(unknown);
+  assert.equal(mixed.classes.has("clean"), false);
+  assert.equal(mixed.$("verdict-badge").hidden, true);
+  assert.equal(mixed.$("next-title").textContent, "Check it locally");
+  assert.equal(mixed.$("copy-prompt").hidden, true);
+  assert.match(mixed.$("verdict").textContent, /1 target couldn't be checked.*lock's environments/);
+  assert.deepEqual(mixed.counted("platform"), ["linux-x86_64"]);
+  assert.equal(mixed.$("cli").textContent, "uvx wheelgap uv.lock -p 3.13 -t linux-x86_64");
+  const unknownTile = mixed.$("platforms").children[1].kids[0].kids;
+  assert.equal(unknownTile.find((node) => node.attrs.class === "bar").attrs.title, reason);
+  const unknownMark = unknownTile.find((node) => node.attrs.class === "pct");
+  assert.deepEqual([unknownMark.kids[0], unknownMark.kids[1].attrs.text], ["?", "unknown"]);
+  assert.match(mixed.$("gaps-note").textContent, /marked \?.*lock's environments/);
+  assert.doesNotMatch(mixed.$("gaps-note").textContent, /every package installs from a wheel/);
+
+  const unknownOnly = run({ ...unknown, targets: [windows], packages: 0 });
+  assert.equal(unknownOnly.classes.has("clean"), false);
+  assert.equal(unknownOnly.$("verdict-badge").hidden, true);
+  assert.equal(unknownOnly.$("copy-prompt").hidden, true);
+  assert.match(unknownOnly.$("verdict").textContent, /No targets were checked.*lock's environments/);
+  assert.deepEqual(unknownOnly.counted("platform"), []);
+  assert.match(unknownOnly.$("gaps-note").textContent, /marked \?.*lock's environments/);
+  assert.match(unknownOnly.$("cli").textContent, /No selected target is known to be covered/);
+  assert.doesNotMatch(unknownOnly.$("cli").textContent, /uvx wheelgap|null| -p | -t /);
+
+  const unknownWithGap = run({ ...unknown, rows: [row] }, null, lab);
+  assert.equal(unknownWithGap.$("next-title").textContent, "Fix it");
+  assert.equal(unknownWithGap.$("copy-prompt").hidden, false);
+  assert.doesNotMatch(unknownWithGap.$("gaps-note").textContent, /build lab/);
+  const unknownCell = unknownWithGap.$("gap-table").children[1].kids[0].kids[2];
+  assert.deepEqual(unknownCell.kids[0].attrs, { class: "status s-unknown", text: "? unknown", title: reason });
+});
+
+test("the uv environments alert names Python when restrictions differ between versions", () => {
+  const result = {
+    lockfile: "backend/uv.lock", outside_environments: ["3.14 linux-x86_64", "3.14 win-amd64"],
+    targets: [
+      { label: "3.13 linux-x86_64", python: "3.13", platform: "linux-x86_64" },
+      { label: "3.14 linux-x86_64", python: "3.14", platform: "linux-x86_64" },
+      { label: "3.14 win-amd64", python: "3.14", platform: "win-amd64" },
+    ],
+  };
+  assert.equal(checkLogic.environmentsText(result), "backend/uv.lock is locked for [tool.uv] environments that leave out Linux x86_64 on Python 3.14, Windows x64 on Python 3.14, so uv sync fails there. Add them to environments and run uv lock to check them.");
+  assert.equal(checkLogic.environmentsText({ ...result, outside_environments: [] }), null);
 });

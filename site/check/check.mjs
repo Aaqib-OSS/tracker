@@ -5,7 +5,7 @@ import {
   PLATFORMS, PYTHONS, parseRepo, inputHint, pickRequestedFile, autoPick, toQuery, fromQuery, sortPythons, freeThreaded,
   fixFor, rowsFor, headline, cliCommand, packageCliCommand, fixPrompt, verdictText, shareText, nextSteps, validRef, labVerdict, labFor, canonicalName, gapWheelFor,
   gapWheelTitle, gapWheelsNote, gapWheelFixText, withoutUnreadable, unreadableReason, privatePyprojectReason, tileText, missedText, privateText, badgeMarkdown, fixLinks,
-  notCheckedTail, nextSection, NESTED_DEPTH,
+  notCheckedTail, targetOutsideLock, environmentsText, nextSection, NESTED_DEPTH,
 } from "./check-logic.mjs";
 
 const $ = (id) => document.getElementById(id);
@@ -269,7 +269,7 @@ function onResult(result) {
   }
   state.result = result;
   const pys = sortPythons(result.targets.map((t) => t.python));
-  if (!pys.includes(state.python)) state.python = pys.find((p) => !result.outside_lock.includes(p)) ?? pys[0];
+  if (!pys.includes(state.python)) state.python = pys.find((p) => result.targets.some((t) => t.python === p && !targetOutsideLock(result, t) && !result.unknown_environments?.[t.label])) ?? pys[0];
   if (state.platform && !state.platforms.includes(state.platform)) state.platform = null;
   status(`Checked with wheelgap ${result.wheelgap}, in your browser.`);
   loadLab(result);
@@ -404,8 +404,8 @@ function render() {
   hideResultSections(false);
   renderVerdict();
   renderSetup();
-  // Nothing was checked (every package skipped, or none listed): no bars or table whose ✓ would read as a pass.
-  if (state.result.packages === 0) return hideResultSections(true, true);
+  // No package checked: hide empty bars, unless the targets' ? marks need to explain undecidable environments.
+  if (state.result.packages === 0 && !Object.keys(state.result.unknown_environments || {}).length) return hideResultSections(true, true);
   renderTargets();
   renderTable();
   renderNext();
@@ -422,12 +422,12 @@ function renderVerdict() {
   const privateReason = privatePyprojectReason(r);
   const card = $("verdict").closest("section");
   const repoName = `${state.repo.owner}/${state.repo.name}`;
-  const isClean = h.gaps === 0 && h.unknown === 0 && h.targets > 0 && h.packages > 0 && notChecked === 0;
+  const isClean = h.gaps === 0 && h.unknown === 0 && !h.unknownTargets && h.targets > 0 && h.packages > 0 && notChecked === 0;
   card.classList.toggle("clean", isClean);
   // Not offered while a private index's packages went unchecked: "keep it that way" would claim a pass for them too.
   $("verdict-badge").hidden = !isClean;
   $("verdict").textContent = privateReason ? `${r.lockfile} wasn't checked: ${privateReason}`
-    : h.targets === 0 ? `${repoName}'s lockfile leaves out every Python picked` : verdictText(h, notChecked);
+    : h.targets === 0 && !h.unknownTargets ? `${repoName}'s lockfile leaves out every target picked` : verdictText(h, notChecked);
   const steps = nextSteps(state.pythons, state.platforms);
   $("next").hidden = !steps.length;
   $("next-buttons").replaceChildren(...steps.map((s) => el("button", {
@@ -444,6 +444,8 @@ function renderVerdict() {
   if (r.outside_lock.length) {
     alerts.push(el("p", { class: "alert warn", text: `${r.lockfile} only allows Python ${r.requires_python}, so it has no wheels for ${r.outside_lock.join(", ")} and those aren't counted. Widening requires-python and re-locking is the first step there.` }));
   }
+  const environments = environmentsText(r);
+  if (environments) alerts.push(el("p", { class: "alert warn", text: environments }));
   if (h.unknown) {
     alerts.push(el("p", { class: "alert warn", text: `${h.unknown} package${h.unknown === 1 ? "" : "s"} couldn't be checked on some targets (marked unknown below), so they aren't counted as having a wheel or not.` }));
   }
@@ -459,8 +461,9 @@ function renderVerdict() {
   const privateIndex = r.private || [];
   if (privateReason) {
     // The zero-package result hides "Fix it", so keep the local command here with the explanation.
-    alerts.push(el("p", { class: "alert warn" },
-      "Check locally with ", el("code", { text: cliCommand(r, state.pythons, state.platforms) }),
+    const command = cliCommand(r, state.pythons, state.platforms);
+    if (command) alerts.push(el("p", { class: "alert warn" },
+      "Check locally with ", el("code", { text: command }),
       " in a checkout (add --index-url for your index), or commit a uv.lock: this page reads its recorded files without PyPI lookups."));
   } else if (privateIndex.length) {
     alerts.push(el("p", { class: "alert warn", text: privateText(r) }));
@@ -545,7 +548,9 @@ function renderTargets() {
   const rows = r.targets.filter((t) => t.python === state.python).map((t) => {
     const c = r.per_target[t.label];
     const total = c.wheel + c.source + c.missing + c.unknown;
-    const tile = tileText(c, outside, notChecked);
+    const excluded = targetOutsideLock(r, t);
+    const unknown = excluded ? null : r.unknown_environments?.[t.label];
+    const tile = unknown ? { mark: "?", note: "unknown" } : tileText(c, excluded, notChecked);
     const pct = (k) => (total ? (100 * c[k]) / total : 0);
     const pressed = state.platform === t.platform;
     return el("li", {}, el("button", {
@@ -553,7 +558,7 @@ function renderTargets() {
       onclick: () => { state.platform = pressed ? null : t.platform; keepFocus(() => { renderTargets(); renderTable(); }); },
     },
     el("span", { class: "pname" }, NAMES[t.platform] || t.platform, el("small", { text: t.platform })),
-    el("span", { class: "bar", title: outside ? "not in the lock's Pythons" : `${c.wheel} wheel, ${c.source} from source, ${c.missing} can't install${c.unknown ? `, ${c.unknown} unknown` : ""}` },
+    el("span", { class: "bar", title: unknown || (excluded ? "not locked for this target" : `${c.wheel} wheel, ${c.source} from source, ${c.missing} can't install${c.unknown ? `, ${c.unknown} unknown` : ""}`) },
       ...["wheel", "source", "missing", "unknown"].map((k) => el("span", { class: `b-${k}`, style: `width:${pct(k)}%` }))),
     el("span", { class: "pct" }, tile.mark, el("small", { text: tile.note }))));
   });
@@ -567,18 +572,25 @@ function renderTable() {
   const r = state.result;
   if (!r) return;
   const labels = r.targets.filter((t) => t.python === state.python && (!state.platform || t.platform === state.platform));
+  const unknown = labels.find((t) => r.unknown_environments?.[t.label]);
   let rows = rowsFor(r, state.python);
   if (state.platform) rows = rows.filter((row) => row.here.some((l) => labels.some((t) => t.label === l)));
   $("gaps-title").textContent = `Packages without a wheel on Python ${state.python}${state.platform ? `, ${NAMES[state.platform]}` : ""}`;
   $("gaps-note").textContent = r.outside_lock.includes(state.python)
     ? `${r.lockfile} doesn't allow Python ${state.python} (requires-python ${r.requires_python}), so it has no wheels for it to check. Widen requires-python and re-lock first.`
+    : labels.every((t) => targetOutsideLock(r, t))
+      ? `${r.lockfile} is not locked for these targets. Add them to [tool.uv] environments and run uv lock first.`
+    : unknown
+      ? `Targets marked ? weren't checked: ${r.unknown_environments[unknown.label]}.`
     : rows.length
       ? `${rows.length} package${rows.length === 1 ? "" : "s"}. The fix column names the lowest newer release with a wheel for every gap that has one, without losing a wheel elsewhere.`
       : notCheckedCount(r)
         // Packages kept off pypi.org aren't in the rows: "every package" would claim a pass for them too.
         ? `None among the checked packages${notCheckedTail(notCheckedCount(r))}.`
-        : "None: every package installs from a wheel here.";
-  const shownLab = rows.some((row) => labels.some((t) => row.statuses[t.label] === "source" && labFor(state.lab[canonicalName(row.name)]?.builds, row.version, t.label)));
+        : labels.some((t) => targetOutsideLock(r, t))
+          ? "None on the checked targets. Platforms marked not locked aren't counted."
+          : "None: every package installs from a wheel here.";
+  const shownLab = rows.some((row) => labels.some((t) => !targetOutsideLock(r, t) && !r.unknown_environments?.[t.label] && row.statuses[t.label] === "source" && labFor(state.lab[canonicalName(row.name)]?.builds, row.version, t.label)));
   if (shownLab) {
     $("gaps-note").textContent += " Under a source build, what the tracker's build lab saw building that release from source on GitHub's runners, which have compilers and many system libraries preinstalled (hover for details).";
   }
@@ -625,6 +637,8 @@ function renderTable() {
     return el("tr", {},
       el("td", { class: "pkg" }, ...pkgKids),
       ...labels.map((t) => {
+        if (targetOutsideLock(r, t)) return el("td", {}, el("span", { class: "na", text: "–", title: "not locked for this target" }));
+        if (r.unknown_environments?.[t.label]) return el("td", {}, el("span", { class: "status s-unknown", text: "? unknown", title: r.unknown_environments[t.label] }));
         const s = row.statuses[t.label];
         if (s === "n/a") return el("td", {}, el("span", { class: "na", text: "–", title: "not installed on this target" }));
         const lab = s === "source" ? labFor(labPkg?.builds, row.version, t.label) : null;
@@ -646,13 +660,18 @@ function renderTable() {
 function renderNext() {
   const r = state.result;
   const h = headline(r);
-  const { title, showPrompt } = nextSection(h, notCheckedCount(r));
-  $("next-title").textContent = title;
+  const command = cliCommand(r, state.pythons, state.platforms);
+  // A target the lock's environments can't decide is checked locally; with no covered target there's no command.
+  const undecided = h.unknownTargets > 0 && h.gaps === 0;
+  const next = nextSection(h, notCheckedCount(r));
+  $("next-title").textContent = !command ? "Choose a covered target" : undecided ? "Check it locally" : next.title;
+  const showPrompt = next.showPrompt && !undecided && !!command;
   $("copy-prompt").hidden = !showPrompt;
   $("prompt-note").hidden = !showPrompt;
   // A command for the visitor's own index needs the placeholder the private-index alert asks them to add.
   const indexFlag = notCheckedCount(r) ? " --index-url YOUR_INDEX_URL" : "";
-  $("cli").textContent = cliCommand(r, state.pythons, state.platforms) + indexFlag;
+  $("cli").textContent = command ? command + indexFlag
+    : "No selected target is known to be covered by the lockfile's environments. Choose a covered target before checking again.";
   // The link names the lockfile only when a visit with the repo alone would start from another one.
   $("badge-md").textContent = badgeMarkdown(state.repo, r.lockfile, autoPick(state.plan.lockfiles.filter((l) => !l.added), null, state.pickContext ?? {}).lock?.path ?? null);
   const caveats = [
@@ -680,9 +699,9 @@ async function copy(button, text, done) {
 }
 
 $("copy-link").onclick = (e) => copy(e.currentTarget, location.href, "Link copied");
-// The line names only what the shown result counted: its own targets, less the Pythons the lockfile leaves out,
+// The line names only what the shown result counted: its own targets, less those the lockfile leaves out,
 // never the current selection (a new check may still be running for it), and how many it left off pypi.org.
-const counted = (key) => [...new Set(state.result.targets.filter((t) => !state.result.outside_lock.includes(t.python)).map((t) => t[key]))];
+const counted = (key) => [...new Set(state.result.targets.filter((t) => !targetOutsideLock(state.result, t) && !state.result.unknown_environments?.[t.label]).map((t) => t[key]))];
 $("copy-share").onclick = (e) => copy(e.currentTarget, shareText(`${state.repo.owner}/${state.repo.name}`, headline(state.result), counted("python"), counted("platform"), location.href, notCheckedCount(state.result)), "Result copied");
 $("copy-prompt").onclick = (e) => copy(e.currentTarget, fixPrompt(`${state.repo.owner}/${state.repo.name}`, state.result, state.fixes, state.pythons, state.platforms, state.gapWheels, state.lab, notCheckedCount(state.result)), "Prompt copied");
 $("copy-badge").onclick = (e) => copy(e.currentTarget, $("badge-md").textContent, "Badge Markdown copied");
