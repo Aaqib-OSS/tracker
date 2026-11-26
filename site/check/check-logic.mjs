@@ -516,6 +516,32 @@ export function cliCommand(result, pythons, platforms) {
   return `uvx wheelgap ${lock} -p ${sortPythons(selected.pythons).join(",")} -t ${selected.platforms.join(",")}`;
 }
 
+// The Action splits arguments without interpreting shell quotes, so only offer literal paths.
+export function workflowYaml(result, pythons, platforms, version) {
+  if (!version || !/^[A-Za-z0-9._\/-]+$/.test(result.lockfile)) return null;
+  const command = cliCommand(result, pythons, platforms);
+  if (!command) return null;
+  const quoted = JSON.stringify(command.slice("uvx wheelgap ".length));
+  return `name: wheelgap
+on: pull_request
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  wheels:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: wheelgap/wheelgap@v${version}
+        with:
+          args: ${quoted}
+          compare-to: base
+          comment: true
+`;
+}
+
 const PACKAGE_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/;
 
 // Read the published PyPI package name from a root setup.cfg ([metadata] name) or pyproject.toml ([project] name).

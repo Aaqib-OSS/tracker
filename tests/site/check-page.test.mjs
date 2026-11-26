@@ -69,7 +69,7 @@ test("a result with no package checked shows the verdict and the setup, but no b
 // configs_for() names for the file, and `files` what GitHub answers for them (a missing one fails to fetch).
 function workerCheck({
   needs, fetch, releases = new Map(), lockfile = "requirements.txt", fetched = [lockfile], gone = [],
-  configs = [], near = [], files = {},
+  configs = [], near = [], files = {}, result = { rows: [] },
 }) {
   const source = read("worker.mjs");
   const fn = (name) => {
@@ -84,12 +84,13 @@ function workerCheck({
   const nearAsked = []; // the driver's configs_for() calls
   const requested = []; // files asked of GitHub
   const written = [];
+  const bytes = (path) => typeof files[path] === "string" ? new TextEncoder().encode(files[path]) : files[path];
   // `gone`: paths the worker believes it wrote that aren't in Pyodide's files any more, so removing them throws.
   const unlink = (path) => { removed.push(path); if (gone.includes(path)) throw new Error(`ENOENT: ${path}`); };
   const driver = {
-    needs: (...args) => { asked.push(args); return JSON.stringify(typeof needs === "function" ? needs(repo) : needs); },
+    needs: (...args) => { asked.push(args); return JSON.stringify(typeof needs === "function" ? needs(repo, args[1]) : needs); },
     configs_for: (...args) => { nearAsked.push(args); return JSON.stringify(near); },
-    check: (...args) => { checked.push(args); return JSON.stringify({ rows: [] }); },
+    check: (...args) => { checked.push(args); return JSON.stringify(result); },
     fixes: (...args) => { fixed.push(args); return "{}"; },
   };
   const repo = { root: "/repos/1", ref: "HEAD", fetched: new Set(fetched), configs };
@@ -100,11 +101,11 @@ function workerCheck({
       const path = url.split(":").pop();
       requested.push(path);
       if (!(path in files)) throw new Error(`Couldn't fetch ${path} (404).`);
-      return files[path];
+      return bytes(path);
     },
     write: (py, root, path, bytes) => written.push([root, path, bytes]),
     trimProject: checkLogic.trimProject, trimReleases: checkLogic.trimReleases,
-    ready: Promise.resolve({ py: { FS: { unlink } }, driver }),
+    ready: Promise.resolve({ py: { FS: { unlink, readFile: (path) => bytes(path.replace("/repos/1/", "")) } }, driver }),
     loaded: new Map([[repo.root, repo]]),
     post: () => {},
   };
@@ -115,6 +116,7 @@ function workerCheck({
     ${fn("pool")}
     ${fn("configsJson")}
     ${fn("fetchConfigs")}
+    ${fn("workflowConfig")}
     ${fn("lookups")}
     ${fn("dropOtherProjects")}
     ${fn("check")}
@@ -125,7 +127,7 @@ function workerCheck({
     };
   `)(env);
   return {
-    check: () => made.check(lockfile), fixes: made.fixes, supersede: made.supersede,
+    check: (path = lockfile) => made.check(path), fixes: made.fixes, supersede: made.supersede,
     checked, fixed, releases, removed, repo, asked, nearAsked, requested, written,
   };
 }
@@ -568,11 +570,83 @@ test("a requirements include ending in .py stays available through the check", a
       : { error: "extra.py is not on disk", kind: "include", path: "extra.py" },
     fetch: async () => assert.fail("no lookup was asked for"), files: { "extra.py": new Uint8Array([1]) },
   });
-  await worker.check();
+  assert.equal((await worker.check()).includes, true);
   assert.deepEqual(worker.requested, ["extra.py"]);
   assert.deepEqual(worker.removed, []);
   assert.deepEqual([...worker.repo.fetched].sort(), ["extra.py", "requirements.txt"]);
   assert.equal(worker.checked.length, 1);
+});
+
+test("requirements includes stay marked on repeat checks and shared cached reads, without marking a plain file", async () => {
+  for (const option of ["-r", "-c"]) {
+    const worker = workerCheck({
+      needs: (repo, path) => path === "plain.txt"
+        ? { lookups: [], total: 0 }
+        : repo.fetched.has("base.txt")
+          ? { lookups: [], total: 0, includes: true }
+          : { error: "base.txt is not on disk", kind: "include", path: "base.txt" },
+      fetch: async () => assert.fail("no package lookup was asked for"),
+      files: { "requirements.txt": `${option} base.txt\n`, "other.txt": `${option} base.txt\n`, "plain.txt": "", "base.txt": "" },
+      fetched: [],
+    });
+    for (const path of ["requirements.txt", "requirements.txt", "other.txt"]) {
+      assert.equal((await worker.check(path)).includes, true, `${option} in ${path}`);
+    }
+    assert.equal(worker.requested.filter((p) => p === "base.txt").length, 1, "the cached include is not fetched again");
+    assert.ok(!(await worker.check("plain.txt")).includes, "a previous include cannot mark another input");
+    assert.equal(worker.checked.length, 4, "all four ordinary checks still reach the driver");
+  }
+});
+
+test("an offline lock reads only its sibling workflow configuration, without changing the checker's files", async () => {
+  const config = '[tool.wheelgap]\nindex-url = "https://packages.example/simple"\n[tool.uv]\nno-binary = true\n';
+  const result = { rows: [], packages: 2, private: [], config_index_url: true };
+  const worker = workerCheck({
+    needs: { lookups: [], total: 0 }, fetch: async () => assert.fail("an offline lock needs no package lookup"),
+    lockfile: "app/uv.lock", configs: ["pyproject.toml", "app/pyproject.toml", "app/uv.toml", "other/pyproject.toml"],
+    files: { "app/pyproject.toml": config, "app/uv.toml": "no-binary = false\n", "other/uv.lock": "lock", "other/pyproject.toml": "[tool.ruff]\n" }, result,
+  });
+  const checked = await worker.check();
+  assert.deepEqual(worker.requested, ["app/pyproject.toml"]);
+  assert.equal(worker.checked[0][5], JSON.stringify(config));
+  assert.deepEqual(worker.written, [], "workflow-only configuration must not introduce installer settings");
+  assert.deepEqual([...worker.repo.fetched], ["app/uv.lock"]);
+  assert.deepEqual(worker.removed, []);
+  assert.equal(checked.config_index_url, true);
+  assert.equal(checked.packages, 2);
+  assert.deepEqual(checked.private, []);
+  assert.deepEqual(checked.rows, result.rows);
+  await worker.check();
+  assert.deepEqual(worker.requested, ["app/pyproject.toml"], "the workflow metadata is cached separately");
+  assert.equal(worker.checked[1][5], JSON.stringify(config));
+  await worker.check("other/uv.lock");
+  assert.equal(worker.checked[2][5], JSON.stringify("[tool.ruff]\n"), "another input never inherits the cached configuration");
+  assert.deepEqual(worker.written.map(([, path]) => path), ["other/uv.lock"], "only the checked file was added to the filesystem");
+
+  const plain = workerCheck({
+    needs: { lookups: [], total: 0 }, fetch: async () => assert.fail("no package lookup"),
+    lockfile: "app/uv.lock", configs: ["pyproject.toml"],
+  });
+  await plain.check();
+  assert.deepEqual(plain.requested, [], "an ancestor's wheelgap setting does not apply");
+  assert.equal(plain.checked[0][5], '""');
+});
+
+test("workflow configuration stays unknown after a failed read or a truncated listing, and failed reads retry", async () => {
+  for (const [configs, files] of [
+    [["pyproject.toml"], {}],
+    [null, {}],
+    [["pyproject.toml"], { "pyproject.toml": new Uint8Array([0xc3, 0x28]) }], // invalid UTF-8, never replacement text
+  ]) {
+    const worker = workerCheck({
+      needs: { lookups: [], total: 0 }, fetch: async () => assert.fail("no package lookup"), lockfile: "uv.lock", configs, files,
+    });
+    await worker.check();
+    await worker.check();
+    assert.deepEqual(worker.checked.map((args) => args[5]), ["null", "null"]);
+    assert.deepEqual(worker.requested, configs ? ["pyproject.toml", "pyproject.toml"] : []);
+    assert.deepEqual(worker.written, []);
+  }
 });
 
 test("with a truncated file list the driver is handed null for the settings files, always as text", async () => {
@@ -649,6 +723,135 @@ test("the badge is a small static image on the page's own origin, offered as Mar
   assert.doesNotMatch(page, /innerHTML/);
 });
 
+test("the workflow panel renders and copies the checked release, and clears stale unavailable results", async () => {
+  const html = read("index.html");
+  const section = html.match(/<section id="workflow" aria-labelledby="workflow-title" hidden>(.*?)<\/section>/s);
+  assert.ok(section, "the workflow starts hidden");
+  assert.ok(html.indexOf('id="badge"') < html.indexOf('id="workflow"'));
+  assert.match(section[1], /<h3 id="workflow-title">Fail pull requests that add a gap<\/h3>/);
+  assert.match(section[1], /Save this as <code>\.github\/workflows\/wheelgap\.yml<\/code>/);
+  assert.match(section[1], /<pre><code id="workflow-yaml"><\/code><\/pre>/);
+  assert.match(section[1], /<button type="button" class="action" id="copy-workflow">Copy workflow<\/button>/);
+
+  const source = read("check.mjs");
+  const functions = ["notCheckedCount", "renderNext", "hideResultSections", "render", "copy"].map((name) => {
+    const found = source.match(new RegExp(`^(?:async )?function ${name}\\(.*?^}$`, "ms"));
+    assert.ok(found, name);
+    return found[0];
+  }).join("\n");
+  const ready = source.match(/^worker\.onmessage = \(\{ data \}\) => \{.*?^\};/ms);
+  const handler = source.match(/^\$\("copy-workflow"\)\.onclick = .*;$/m);
+  assert.ok(ready && handler, "the actual ready and copy handlers are used");
+  const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]));
+  const made = new Map();
+  const $ = (id) => {
+    assert.ok(ids.has(id), `${id} exists in the page`);
+    if (!made.has(id)) made.set(id, {
+      hidden: false, textContent: "", replaceChildren() {}, closest() { return this; },
+      classList: { add() {}, remove() {} },
+      set innerHTML(value) { assert.fail("workflow content must be text"); },
+    });
+    return made.get(id);
+  };
+  const state = {
+    repo: { owner: "o", name: "r" }, plan: { lockfiles: [{ path: "uv.lock" }] },
+    pythons: ["3.14", "3.14t"], platforms: ["linux-x86_64", "win-arm64"],
+    result: {
+      lockfile: "uv.lock", packages: 2, rows: [], private: [], outside_lock: [], config_index_url: false,
+      targets: ["3.14", "3.14t"].flatMap((python) => ["linux-x86_64", "win-arm64"].map((platform) => ({
+        label: `${python} ${platform}`, python, platform,
+      }))),
+    },
+  };
+  const copied = [];
+  const timers = [];
+  const worker = {};
+  const env = {
+    ...checkLogic, $, state, worker, el: () => ({}),
+    renderVerdict() {}, renderSetup() {}, renderTargets() {}, renderTable() {},
+    navigator: { clipboard: { async writeText(text) { copied.push(text); } } },
+    setTimeout: (fn) => { timers.push(fn); },
+    status: () => assert.fail("copy should succeed"),
+  };
+  const view = new Function(...Object.keys(env),
+    `let wheelgapVersion = null; ${ready[0]}\n${functions}\n${handler[0]}\nreturn { renderNext, render };`,
+  )(...Object.values(env));
+  const { renderNext } = view;
+  const version = read("worker.mjs").match(/^export const WHEELGAP = "wheelgap==([^"]+)";$/m)[1];
+  worker.onmessage({ data: { type: "ready", wheelgap: version } });
+  renderNext();
+  assert.equal($("workflow").hidden, false);
+  const yaml = checkLogic.workflowYaml(state.result, state.pythons, state.platforms, version);
+  assert.equal($("workflow-yaml").textContent, yaml);
+  const button = $("copy-workflow");
+  button.textContent = "Copy workflow";
+  await button.onclick({ currentTarget: button });
+  assert.deepEqual(copied, [yaml]);
+  assert.equal(button.textContent, "Workflow copied");
+  timers.shift()();
+  assert.equal(button.textContent, "Copy workflow");
+
+  const unavailable = [];
+  state.result.lockfile = "my app/uv.lock";
+  renderNext();
+  unavailable.push({ reason: "space in path", hidden: $("workflow").hidden, text: $("workflow-yaml").textContent });
+  assert.equal($("cli").textContent, checkLogic.cliCommand(state.result, state.pythons, state.platforms));
+  state.result.lockfile = "uv.lock";
+  worker.onmessage({ data: { type: "ready", wheelgap: null } });
+  renderNext();
+  unavailable.push({ reason: "version not available", hidden: $("workflow").hidden, text: $("workflow-yaml").textContent });
+  assert.deepEqual(unavailable, [
+    { reason: "space in path", hidden: true, text: "" },
+    { reason: "version not available", hidden: true, text: "" },
+  ]);
+  worker.onmessage({ data: { type: "ready", wheelgap: version } });
+  renderNext();
+  assert.equal($("workflow").hidden, false);
+  assert.equal($("workflow-yaml").textContent, yaml);
+
+  for (const [lockfile, flags] of [
+    ["requirements.txt", { includes: true, config_index_url: false }],
+    ["uv.lock", { includes: false, config_index_url: true }],
+    ["uv.lock", { includes: false, config_index_url: null }],
+  ]) {
+    Object.assign(state.result, { lockfile, ...flags });
+    renderNext();
+    assert.equal($("workflow").hidden, true, `${lockfile}: ${JSON.stringify(flags)}`);
+    assert.equal($("workflow-yaml").textContent, "", "an unsupported check clears the previous workflow");
+    assert.equal($("cli").textContent, checkLogic.cliCommand(state.result, state.pythons, state.platforms));
+    Object.assign(state.result, { lockfile: "uv.lock", includes: false, config_index_url: false });
+    renderNext();
+    assert.equal($("workflow").hidden, false, "an ordinary input still offers its workflow after this check");
+    assert.equal($("workflow-yaml").textContent, yaml);
+  }
+
+  state.result.private = ["internal-package"];
+  renderNext();
+  assert.equal($("workflow").hidden, true);
+  assert.equal($("workflow-yaml").textContent, "");
+  state.result.private = [];
+  state.result.outside_environments = state.result.targets.map((t) => t.label);
+  renderNext();
+  assert.equal($("workflow").hidden, true);
+  assert.equal($("workflow-yaml").textContent, "");
+
+  state.result.outside_environments = [];
+  state.result.lockfile = "changed/path/uv.lock";
+  worker.onmessage({ data: { type: "ready", wheelgap: "9.8.7" } });
+  renderNext();
+  assert.equal($("workflow").hidden, false);
+  const updated = checkLogic.workflowYaml(state.result, state.pythons, state.platforms, "9.8.7");
+  assert.equal($("workflow-yaml").textContent, updated);
+  await button.onclick({ currentTarget: button });
+  assert.deepEqual(copied, [yaml, updated], "copy reads the latest displayed text");
+  // render() returns before renderNext() when every package was left private; hideResultSections must clear too.
+  state.result.packages = 0;
+  state.result.private = ["internal-package"];
+  view.render();
+  assert.equal($("workflow").hidden, true);
+  assert.equal($("workflow-yaml").textContent, "");
+});
+
 test("a clean verdict offers the README badge in the verdict card and hides it for gaps or unknowns", () => {
   const html = read("index.html");
   const card = html.match(/<section aria-labelledby="verdict" class="verdict-card">(.*?)<\/section>/s);
@@ -695,14 +898,14 @@ test("a clean verdict offers the README badge in the verdict card and hides it f
     };
     const fns = new Function(
       "$", "state", "el", "headline", "verdictText", "nextSection", "nextSteps", "sortPythons", "missedText", "cliCommand", "badgeMarkdown",
-      "pickLockfile", "autoPick", "privatePyprojectReason", "privateText", "shareText", "copy", "location", "targetOutsideLock", "environmentsText",
+      "pickLockfile", "autoPick", "privatePyprojectReason", "privateText", "shareText", "copy", "location", "targetOutsideLock", "environmentsText", "workflowYaml", "wheelgapVersion",
       `${nc[0]}\n${rv[0]}\n${rn[0]}\n${countedSrc[0]}\n${shareSrc[0]}\nreturn { renderVerdict, renderNext };`,
     )(
       element, state, () => ({}), checkLogic.headline, checkLogic.verdictText, checkLogic.nextSection, checkLogic.nextSteps, checkLogic.sortPythons,
       checkLogic.missedText, checkLogic.cliCommand, checkLogic.badgeMarkdown, checkLogic.pickLockfile, checkLogic.autoPick,
       checkLogic.privatePyprojectReason, checkLogic.privateText, checkLogic.shareText,
       (button, text) => { button.copiedText = text; }, { href: "https://wheelgap.github.io/tracker/check/?repo=o/r" },
-      checkLogic.targetOutsideLock, checkLogic.environmentsText,
+      checkLogic.targetOutsideLock, checkLogic.environmentsText, checkLogic.workflowYaml, "9.8.7",
     );
     fns.renderVerdict();
     fns.renderNext();
@@ -1757,7 +1960,7 @@ test("uv environments distinguish excluded and undecided platforms throughout th
         ...extra,
       },
     };
-    const env = { ...checkLogic, $, state, el, NAMES: Object.fromEntries(checkLogic.PLATFORMS), SHOWN: 60,
+    const env = { ...checkLogic, $, state, el, wheelgapVersion: "9.8.7", NAMES: Object.fromEntries(checkLogic.PLATFORMS), SHOWN: 60,
       STATUS_TEXT: {}, LAB_SHORT: {}, FIX_TEXT: { private: () => "not looked up" } };
     new Function(...Object.keys(env), `${functions}; renderVerdict(); renderTargets(); renderTable(); renderNext();`)(...Object.values(env));
     const countedSource = source.match(/^const counted = (.*);$/m)[1];
